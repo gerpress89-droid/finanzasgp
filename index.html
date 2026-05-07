@@ -1296,7 +1296,25 @@ function toggleCheck(section, idx) {
   const data = allData[currentMonth];
   if (!data||!data[section]||!data[section][idx]) return;
   data[section][idx].done = !data[section][idx].done;
-  renderGastos();
+  const done = data[section][idx].done;
+  // Update solo el item sin re-renderizar todo (para no cerrar collapsibles)
+  const sectionOrder = ['clients','salary','expenses'];
+  const cardIdx = sectionOrder.indexOf(section);
+  const cards = document.querySelectorAll('#controlGrid .control-card');
+  if (cardIdx >= 0 && cards[cardIdx]) {
+    const rows = cards[cardIdx].querySelectorAll('.control-item');
+    if (rows[idx]) {
+      rows[idx].classList.toggle('checked', done);
+      const box = rows[idx].querySelector('.check-box');
+      if (box) box.classList.toggle('done', done);
+    }
+    const doneCount = data[section].filter(x=>x.done).length;
+    const prog = cards[cardIdx].querySelector('.control-progress');
+    if (prog) prog.textContent = doneCount+'/'+data[section].length;
+  }
+  renderKPIs();
+  renderCharts();
+  saveToSheet();
 }
 
 // ── KPIs gastos ───────────────────────────────────────────────────────────────
