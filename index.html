@@ -886,47 +886,56 @@ function setStatus(msg, loading) {
   else document.getElementById('statusDot').classList.remove('loading');
 }
 
-// ── Google Auth (PKCE + Authorization Code Flow) ─────────────────────────────
-const CLIENT_ID   = '136055934550-qivgj21ljcd2g5se6df0h2h0jv2uh873.apps.googleusercontent.com';
-const SCOPES      = 'https://www.googleapis.com/auth/drive.appdata openid email profile';
+// ── Google Auth (PKCE via Cloudflare Worker) ──────────────────────────────────
+const CLIENT_ID    = '136055934550-qivgj21ljcd2g5se6df0h2h0jv2uh873.apps.googleusercontent.com';
+const WORKER_URL   = 'https://finanzas-auth.gerpress89.workers.dev';
+const SCOPES       = 'https://www.googleapis.com/auth/drive.appdata openid email profile';
 const GDRIVE_FILE_NAME = 'finanzas_personales_data.json';
-const STORAGE_KEY = 'finanzas_gp_v3';
-const TOKEN_KEY   = 'g_access_token';
-const TOKEN_EXP   = 'g_token_exp';
-const USER_KEY    = 'g_user_email';
-let gAccessToken  = null;
-let gFileId       = null;
+const STORAGE_KEY  = 'finanzas_gp_v3';
+const TOKEN_KEY    = 'g_access_token';
+const TOKEN_EXP    = 'g_token_exp';
+const USER_KEY     = 'g_user_email';
+const REFRESH_KEY  = 'g_refresh_token';
+let gAccessToken   = null;
+let gFileId        = null;
+let renewalTimer   = null;
 
 function getRedirectURI() {
   return 'https://gerpress89-droid.github.io/finanzasgp/';
 }
 
+// ── PKCE helpers ──────────────────────────────────────────────────────────────
+async function generatePKCE() {
+  const array = new Uint8Array(48);
+  crypto.getRandomValues(array);
+  const verifier = btoa(String.fromCharCode(...array)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  const data = new TextEncoder().encode(verifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  const challenge = btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  return { verifier, challenge };
+}
+
 function saveToken(token, expiresIn, email) {
-  const exp = Date.now() + ((expiresIn||3600) * 1000) - 120000;
+  const exp = Date.now() + ((expiresIn||3600) * 1000) - 60000;
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(TOKEN_EXP, exp.toString());
   if (email) localStorage.setItem(USER_KEY, email);
-  gFileId = null; // Reset file cache for new user
-  // Also save to sessionStorage as backup
+  gFileId = null;
   sessionStorage.setItem(TOKEN_KEY, token);
   sessionStorage.setItem(TOKEN_EXP, exp.toString());
-  // Save email in cookie (persistent across sessions, 30 days)
   const d = new Date();
-  d.setTime(d.getTime() + 30*24*60*60*1000);
+  d.setTime(d.getTime() + 90*24*60*60*1000); // 90 days cookie
   document.cookie = `g_email=${encodeURIComponent(email||'')};expires=${d.toUTCString()};path=/;SameSite=Strict`;
   document.cookie = `g_logged_in=1;expires=${d.toUTCString()};path=/;SameSite=Strict`;
 }
 
 function getSavedToken() {
-  // Try localStorage first
   let t = localStorage.getItem(TOKEN_KEY);
   let e = parseInt(localStorage.getItem(TOKEN_EXP)||'0');
   if (t && Date.now() < e) return t;
-  // Try sessionStorage as backup
   t = sessionStorage.getItem(TOKEN_KEY);
   e = parseInt(sessionStorage.getItem(TOKEN_EXP)||'0');
   if (t && Date.now() < e) {
-    // Restore to localStorage
     localStorage.setItem(TOKEN_KEY, t);
     localStorage.setItem(TOKEN_EXP, e.toString());
     return t;
@@ -941,135 +950,132 @@ function getCookie(name) {
   return v ? decodeURIComponent(v[2]) : null;
 }
 
-function wasLoggedIn() {
-  return getCookie('g_logged_in') === '1';
+// ── Refresh token via Worker ──────────────────────────────────────────────────
+async function refreshAccessToken() {
+  const rt = localStorage.getItem(REFRESH_KEY);
+  if (!rt) return false;
+  try {
+    const res = await fetch(WORKER_URL + '/refresh', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ refresh_token: rt }),
+    });
+    const data = await res.json();
+    if (data.access_token) {
+      gAccessToken = data.access_token;
+      const email = localStorage.getItem(USER_KEY) || getCookie('g_email') || '';
+      saveToken(data.access_token, data.expires_in || 3600, email);
+      updateAuthUI(true, email);
+      scheduleTokenRenewal(data.expires_in || 3600);
+      return true;
+    }
+    // Refresh token revoked
+    localStorage.removeItem(REFRESH_KEY);
+    return false;
+  } catch(e) {
+    console.error('Refresh error:', e);
+    return false;
+  }
 }
 
+function scheduleTokenRenewal(expiresInSeconds) {
+  if (renewalTimer) clearTimeout(renewalTimer);
+  const delay = Math.max(30000, (expiresInSeconds - 300) * 1000);
+  renewalTimer = setTimeout(async () => {
+    const ok = await refreshAccessToken();
+    if (!ok) console.warn('Token renewal failed');
+  }, delay);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
 async function initGoogleAuth() {
-  // 1. Returning from OAuth redirect with token in URL hash (Implicit Flow)
-  const hash = window.location.hash;
-  if (hash && hash.includes('access_token')) {
-    const p = new URLSearchParams(hash.slice(1));
-    const token = p.get('access_token');
-    const exp   = parseInt(p.get('expires_in') || '3600');
-    if (token) {
-      gAccessToken = token;
+  // 1. Returning from OAuth with ?code= (PKCE)
+  const urlParams = new URLSearchParams(window.location.search);
+  const code = urlParams.get('code');
+  if (code) {
+    history.replaceState(null, '', window.location.pathname);
+    const verifier = sessionStorage.getItem('pkce_verifier');
+    sessionStorage.removeItem('pkce_verifier');
+    if (verifier) {
       try {
-        const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',
-          {headers:{Authorization:'Bearer '+token}});
-        const u = await r.json();
-        saveToken(token, exp, u.email||'');
-        updateAuthUI(true, u.email||'');
-      } catch(e) { saveToken(token, exp, ''); updateAuthUI(true, ''); }
-      history.replaceState(null,'',window.location.pathname);
-      // Schedule silent renewal at 50 min
-      scheduleTokenRenewal(exp);
-      await loadFromDrive();
-      return;
+        setStatus('🔄 Autenticando…', true);
+        const res = await fetch(WORKER_URL + '/token', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ code, code_verifier: verifier }),
+        });
+        const tokens = await res.json();
+        if (tokens.access_token) {
+          gAccessToken = tokens.access_token;
+          if (tokens.refresh_token) localStorage.setItem(REFRESH_KEY, tokens.refresh_token);
+          try {
+            const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',
+              { headers: { Authorization: 'Bearer ' + gAccessToken } });
+            const u = await r.json();
+            saveToken(gAccessToken, tokens.expires_in || 3600, u.email || '');
+            updateAuthUI(true, u.email || '');
+          } catch(e) {
+            saveToken(gAccessToken, tokens.expires_in || 3600, '');
+            updateAuthUI(true, '');
+          }
+          scheduleTokenRenewal(tokens.expires_in || 3600);
+          await loadFromDrive();
+          return;
+        }
+      } catch(e) { console.error('Token exchange error:', e); }
     }
   }
 
-  // 2. Check if we have a valid saved token
+  // 2. Valid saved token
   const saved = getSavedToken();
   if (saved) {
     gAccessToken = saved;
     const email = localStorage.getItem(USER_KEY) || getCookie('g_email') || '';
     updateAuthUI(true, email);
-    // Schedule silent renewal based on remaining time
     const exp = parseInt(localStorage.getItem(TOKEN_EXP)||'0');
-    const remaining = Math.max(0, exp - Date.now()) / 1000;
-    scheduleTokenRenewal(remaining);
+    scheduleTokenRenewal(Math.max(0, exp - Date.now()) / 1000);
     await loadFromDrive();
     return;
   }
 
-  // 3. Token expired — try silent renewal via hidden iframe (user already consented)
-  if (getCookie('g_logged_in') === '1') {
-    const renewed = await silentRenew();
-    if (renewed) return;
-    // Silent renewal failed — show locked screen
-    const savedEmail = getCookie('g_email') || localStorage.getItem(USER_KEY) || '';
+  // 3. Try refresh token silently (session permanente)
+  if (localStorage.getItem(REFRESH_KEY)) {
+    setStatus('🔄 Reconectando…', true);
+    const ok = await refreshAccessToken();
+    if (ok) {
+      await loadFromDrive();
+      return;
+    }
+  }
+
+  // 4. Token expirado, sin refresh — pantalla bloqueada
+  const savedEmail = getCookie('g_email') || localStorage.getItem(USER_KEY) || '';
+  if (getCookie('g_logged_in') === '1' && savedEmail) {
     updateAuthUI(false, savedEmail);
     showLockedScreen(savedEmail);
     return;
   }
 
-  // 4. First time user
+  // 5. Primera vez
   updateAuthUI(false, '');
   showLockedScreen('');
 }
 
-// Silent token renewal via hidden iframe (no redirect, no UX disruption)
-let renewalTimer = null;
-function scheduleTokenRenewal(expiresInSeconds) {
-  if (renewalTimer) clearTimeout(renewalTimer);
-  // Renew 5 minutes before expiry (or in 50 min if expiry > 55 min)
-  const delay = Math.max(0, (expiresInSeconds - 300)) * 1000;
-  renewalTimer = setTimeout(async () => {
-    const renewed = await silentRenew();
-    if (!renewed) {
-      // Could not renew silently — will show locked on next page load but don't interrupt current session
-      console.warn('Silent renewal failed — session will expire soon');
-    }
-  }, delay);
-}
-
-function silentRenew() {
-  return new Promise((resolve) => {
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'display:none;width:0;height:0;border:0;';
-    const params = new URLSearchParams({
-      client_id:     CLIENT_ID,
-      redirect_uri:  getRedirectURI(),
-      response_type: 'token',
-      scope:         SCOPES,
-      prompt:        'none',  // Silent — won't show any UI
-      include_granted_scopes: 'true',
-    });
-    iframe.src = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
-    let done = false;
-    const finish = (success) => {
-      if (done) return;
-      done = true;
-      try { document.body.removeChild(iframe); } catch(e) {}
-      resolve(success);
-    };
-    iframe.onload = () => {
-      try {
-        const iHash = iframe.contentWindow.location.hash;
-        if (iHash && iHash.includes('access_token')) {
-          const p = new URLSearchParams(iHash.slice(1));
-          const token = p.get('access_token');
-          const exp   = parseInt(p.get('expires_in') || '3600');
-          if (token) {
-            gAccessToken = token;
-            const email = localStorage.getItem(USER_KEY) || getCookie('g_email') || '';
-            saveToken(token, exp, email);
-            updateAuthUI(true, email);
-            scheduleTokenRenewal(exp);
-            finish(true);
-            return;
-          }
-        }
-      } catch(e) { /* cross-origin — expected if it redirected to login page */ }
-      finish(false);
-    };
-    // Timeout after 8 seconds
-    setTimeout(() => finish(false), 8000);
-    document.body.appendChild(iframe);
-  });
-}
-
 function signIn() {
-  const params = new URLSearchParams({
-    client_id:     CLIENT_ID,
-    redirect_uri:  getRedirectURI(),
-    response_type: 'token',
-    scope:         SCOPES,
-    prompt:        'select_account',
-    include_granted_scopes: 'true',
+  generatePKCE().then(({ verifier, challenge }) => {
+    sessionStorage.setItem('pkce_verifier', verifier);
+    const params = new URLSearchParams({
+      client_id:              CLIENT_ID,
+      redirect_uri:           getRedirectURI(),
+      response_type:          'code',
+      scope:                  SCOPES,
+      access_type:            'offline',
+      prompt:                 'consent',
+      code_challenge:         challenge,
+      code_challenge_method:  'S256',
+    });
+    window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
   });
-  window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
 }
 
 function signOut() {
@@ -1080,6 +1086,7 @@ function signOut() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(TOKEN_EXP);
   localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(REFRESH_KEY);
   sessionStorage.removeItem(TOKEN_KEY);
   sessionStorage.removeItem(TOKEN_EXP);
   document.cookie = 'g_logged_in=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;';
