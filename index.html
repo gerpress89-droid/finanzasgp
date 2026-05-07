@@ -567,6 +567,17 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .gauge-factor-bar { flex:1; height:5px; background:var(--surface2); border-radius:3px; overflow:hidden; }
 .gauge-factor-fill { height:100%; border-radius:3px; transition:width 0.8s cubic-bezier(0.4,0,0.2,1); }
 .gauge-factor-val { font-size:11px; font-weight:700; width:32px; text-align:right; }
+/* ── COLLAPSIBLE ─────────────────────────────────────────────────────────── */
+.collapsible-body { display: none; }
+.collapsible-body.open { display: block; }
+.collapse-toggle { cursor: pointer; user-select: none; }
+.collapse-toggle::after { content: ' ▼'; font-size: 10px; color: var(--muted); margin-left: 6px; display: inline-block; }
+.collapse-toggle.open::after { content: ' ▲'; }
+@media(min-width:601px) {
+  .collapsible-body { display: block !important; }
+  .collapse-toggle { cursor: default; }
+  .collapse-toggle::after { display: none; }
+}
 </style>
 
 </head>
@@ -1250,11 +1261,9 @@ function checkedCount(arr) {
 
 // ── Toggle check ──────────────────────────────────────────────────────────────
 function toggleCollapse(uid) {
-  // Solo actuar en mobile
-  if (window.innerWidth > 600) return;
   const body = document.getElementById(uid);
-  const head = body ? body.previousElementSibling : null;
   if (!body) return;
+  const head = body.previousElementSibling;
   body.classList.toggle('open');
   if (head) head.classList.toggle('open');
 }
