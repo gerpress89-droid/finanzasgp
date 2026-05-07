@@ -573,11 +573,6 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .collapse-toggle { cursor: pointer; user-select: none; }
 .collapse-toggle::after { content: ' ▼'; font-size: 10px; color: var(--muted); margin-left: 6px; display: inline-block; }
 .collapse-toggle.open::after { content: ' ▲'; }
-@media(min-width:601px) {
-  .collapsible-body { display: block !important; }
-  .collapse-toggle { cursor: default; }
-  .collapse-toggle::after { display: none; }
-}
 </style>
 
 </head>
@@ -1260,12 +1255,28 @@ function checkedCount(arr) {
 }
 
 // ── Toggle check ──────────────────────────────────────────────────────────────
+function isMobile() { return window.innerWidth <= 900; }
+
 function toggleCollapse(uid) {
+  if (!isMobile()) return; // desktop: always open
   const body = document.getElementById(uid);
   if (!body) return;
   const head = body.previousElementSibling;
   body.classList.toggle('open');
   if (head) head.classList.toggle('open');
+}
+
+function initCollapsibles() {
+  // On desktop: open all. On mobile: close all (collapsed by default)
+  document.querySelectorAll('.collapsible-body').forEach(el => {
+    if (!isMobile()) {
+      el.classList.add('open');
+      if (el.previousElementSibling) el.previousElementSibling.classList.add('open');
+    } else {
+      el.classList.remove('open');
+      if (el.previousElementSibling) el.previousElementSibling.classList.remove('open');
+    }
+  });
 }
 
 function toggleCheck(section, idx) {
@@ -1366,6 +1377,7 @@ function renderControlGrid() {
     buildCard(sectionTitles.clients, 'var(--green)','clients',data.clients||[],t.totalClients,'inc') +
     buildCard(sectionTitles.salary,  '#a8e86e',     'salary', data.salary||[], t.totalSalary, 'inc') +
     buildCard(sectionTitles.expenses,'var(--red)',   'expenses',data.expenses||[],t.totalExp,'exp');
+  setTimeout(initCollapsibles, 0);
 }
 
 // ── Charts gastos ─────────────────────────────────────────────────────────────
@@ -1517,6 +1529,7 @@ function renderDiario() {
   }).join('');
 
   syncDiarioToMonth(mes);
+  setTimeout(initCollapsibles, 0);
   const savedMonth = currentMonth;
   currentMonth = mes;
   renderKPIs(); renderControlGrid(); renderCharts();
@@ -1979,6 +1992,7 @@ function renderObjetivos(){
       ${subHtml}
       </div></div>`;
   }).join('');
+  setTimeout(initCollapsibles, 0);
   renderObjChart();
 }
 
