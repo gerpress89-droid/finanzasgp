@@ -1258,23 +1258,36 @@ function checkedCount(arr) {
 function isMobile() { return window.innerWidth <= 900; }
 
 function toggleCollapse(uid) {
-  if (!isMobile()) return; // desktop: always open
+  if (!isMobile()) return;
   const body = document.getElementById(uid);
   if (!body) return;
   const head = body.previousElementSibling;
   body.classList.toggle('open');
   if (head) head.classList.toggle('open');
+  if (body.classList.contains('open')) {
+    openCollapsibles.add(uid);
+  } else {
+    openCollapsibles.delete(uid);
+  }
 }
 
+// Track which collapsibles are open
+const openCollapsibles = new Set();
+
 function initCollapsibles() {
-  // On desktop: open all. On mobile: close all (collapsed by default)
   document.querySelectorAll('.collapsible-body').forEach(el => {
     if (!isMobile()) {
       el.classList.add('open');
       if (el.previousElementSibling) el.previousElementSibling.classList.add('open');
     } else {
-      el.classList.remove('open');
-      if (el.previousElementSibling) el.previousElementSibling.classList.remove('open');
+      // Restore previously open state
+      if (openCollapsibles.has(el.id)) {
+        el.classList.add('open');
+        if (el.previousElementSibling) el.previousElementSibling.classList.add('open');
+      } else {
+        el.classList.remove('open');
+        if (el.previousElementSibling) el.previousElementSibling.classList.remove('open');
+      }
     }
   });
 }
