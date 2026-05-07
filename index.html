@@ -1249,6 +1249,16 @@ function checkedCount(arr) {
 }
 
 // ── Toggle check ──────────────────────────────────────────────────────────────
+function toggleCollapse(uid) {
+  // Solo actuar en mobile
+  if (window.innerWidth > 600) return;
+  const body = document.getElementById(uid);
+  const head = body ? body.previousElementSibling : null;
+  if (!body) return;
+  body.classList.toggle('open');
+  if (head) head.classList.toggle('open');
+}
+
 function toggleCheck(section, idx) {
   const data = allData[currentMonth];
   if (!data||!data[section]||!data[section][idx]) return;
@@ -1328,15 +1338,18 @@ function renderControlGrid() {
         <span class="item-name">${item.label}</span>
         <span class="item-amount ${colorClass}">${fmt(item.amount)}</span>
       </div>`).join('');
+    const uid = 'cc_'+section+'_'+currentMonth;
     return `
       <div class="control-card">
-        <div class="control-head">
+        <div class="control-head collapse-toggle" onclick="toggleCollapse('${uid}')">
           <div class="control-dot" style="background:${dotColor}"></div>
           <h3>${title}</h3>
           <span class="control-total" style="color:${dotColor}">${fmt(totalVal)}</span>
           <span class="control-progress">${doneCount}/${items.length}</span>
         </div>
-        ${rows||'<div class="no-data" style="padding:30px"><p>Sin items</p></div>'}
+        <div class="collapsible-body" id="${uid}">
+          ${rows||'<div class="no-data" style="padding:30px"><p>Sin items</p></div>'}
+        </div>
       </div>`;
   }
 
@@ -1482,13 +1495,16 @@ function renderDiario() {
         <button class="diario-del" onclick="deleteDiario('${e.date}','${cat.id}',${e.amount},${idx})">✕</button>
       </div>`).join('') :
       `<div style="padding:28px;text-align:center;color:var(--muted);font-size:var(--fs-sm);">Sin registros este mes</div>`;
+    const duid = 'dc_' + cat.id + '_' + mes;
     return `<div class="control-card">
-      <div class="control-head">
+      <div class="control-head collapse-toggle" onclick="toggleCollapse('${duid}')">
         <div class="control-dot" style="background:${cat.color}"></div>
         <h3>${cat.emoji} ${cat.nombre}</h3>
         <span class="control-total" style="color:${cat.color};margin-left:auto">${fmt(tot)}</span>
         <span class="control-progress" style="margin-left:9px">${items.length} items</span>
-      </div>${rows}</div>`;
+      </div>
+      <div class="collapsible-body" id="${duid}">${rows}</div>
+    </div>`;
   }).join('');
 
   syncDiarioToMonth(mes);
@@ -1924,11 +1940,13 @@ function renderObjetivos(){
       <div class="obj-subgoals"><div class="obj-sub-title">Detalle de gastos</div>
       ${obj.subgoals.map(s=>`<div class="obj-sub-row"><span class="obj-sub-name">${s.label}</span><span class="obj-sub-val">${fmt(s.amount)}</span></div>`).join('')}</div>`:'';
 
+    const ouid = 'obj_'+oi;
     return`<div class="obj-card" style="border-color:${done?obj.color:'var(--border)'}">
-      <div class="obj-top"><div class="obj-icon-name">
+      <div class="obj-top collapse-toggle" onclick="toggleCollapse('${ouid}')"><div class="obj-icon-name">
         <span class="obj-icon">${obj.emoji}</span><span class="obj-name">${obj.nombre}</span>
         ${done?`<span class="obj-done-badge">✅ ${completedAt}</span>`:''}
       </div></div>
+      <div class="collapsible-body" id="${ouid}">
       <div class="obj-amounts">
         <div class="obj-amt"><div class="obj-amt-label">Meta</div><div class="obj-amt-val">${fmt(obj.meta)}</div></div>
         <div class="obj-amt"><div class="obj-amt-label">Cobrado</div><div class="obj-amt-val" style="color:${obj.color}">${fmt(totalAh)}</div></div>
@@ -1949,7 +1967,8 @@ function renderObjetivos(){
         <div class="obj-months-title">Períodos — hacé click en ✓ para marcar pagado</div>
         ${mesesRows||'<div style="color:var(--muted);font-size:12px;padding:8px 0">Sin períodos cargados</div>'}
       </div>
-      ${subHtml}</div>`;
+      ${subHtml}
+      </div></div>`;
   }).join('');
   renderObjChart();
 }
