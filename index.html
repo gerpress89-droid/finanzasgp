@@ -890,7 +890,6 @@ let gAccessToken  = null;
 let gFileId       = null;
 
 function getRedirectURI() {
-  // GitHub Pages sirve desde /finanzasgp/ — usar pathname base
   return 'https://gerpress89-droid.github.io/finanzasgp/';
 }
 
@@ -938,35 +937,6 @@ function wasLoggedIn() {
   return getCookie('g_logged_in') === '1';
 }
 
-// ── Auto-renovación proactiva del token ─────────────────────────────────────
-// Chequea cada 2 minutos si el token expira en menos de 10 minutos
-// y lanza silent refresh antes de que expire, evitando el loop post-expiración
-function scheduleTokenRenewal() {
-  setInterval(async () => {
-    const exp = parseInt(localStorage.getItem(TOKEN_EXP)||'0');
-    const remaining = exp - Date.now();
-    // Si quedan menos de 10 minutos y tenemos email guardado → renovar silencioso
-    if (remaining > 0 && remaining < 10 * 60 * 1000 && gAccessToken) {
-      const savedEmail = getCookie('g_email') || localStorage.getItem(USER_KEY) || '';
-      if (!savedEmail) return;
-      // Intentar silent refresh en iframe invisible para no interrumpir al usuario
-      try {
-        const params = new URLSearchParams({
-          client_id:     CLIENT_ID,
-          redirect_uri:  getRedirectURI(),
-          response_type: 'token',
-          scope:         SCOPES,
-          prompt:        'none',
-          login_hint:    savedEmail,
-        });
-        // Usamos redirect normal — si falla, el flag silent_refresh evita el loop
-        sessionStorage.setItem('silent_refresh', '1');
-        window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
-      } catch(e) { /* silencioso */ }
-    }
-  }, 2 * 60 * 1000); // cada 2 minutos
-}
-
 async function initGoogleAuth() {
   // 1. Returning from OAuth redirect with token in URL hash
   const hash = window.location.hash;
@@ -987,21 +957,9 @@ async function initGoogleAuth() {
         updateAuthUI(true, '');
       }
       history.replaceState(null,'',window.location.pathname);
-      scheduleTokenRenewal();
       await loadFromDrive();
       return;
     }
-  }
-
-  // 1b. Returning from FAILED silent refresh (no token in hash, but flag set)
-  if (sessionStorage.getItem('silent_refresh') === '1') {
-    sessionStorage.removeItem('silent_refresh');
-    // Silent refresh failed (e.g. user revoked, account picker required)
-    // Show local data + login button, do NOT loop
-    loadLocalData(true);
-    updateAuthUI(false, '');
-    setStatus('👋 Sesión expirada — tocá Entrar para reconectar', false);
-    return;
   }
 
   // 2. Check if we have a valid saved token
@@ -1010,26 +968,17 @@ async function initGoogleAuth() {
     gAccessToken = saved;
     const email = localStorage.getItem(USER_KEY) || getCookie('g_email') || '';
     updateAuthUI(true, email);
-    scheduleTokenRenewal();
     await loadFromDrive();
     return;
   }
 
-  // 3. Token expired but user was logged in before (cookie = 30 days) → silent refresh
+  // 3. Token expired — show local data and ask user to re-login
   const savedEmail = getCookie('g_email') || localStorage.getItem(USER_KEY) || '';
   if (getCookie('g_logged_in') === '1' && savedEmail) {
     loadLocalData(true);
-    setStatus('🔄 Renovando sesión…', true);
-    sessionStorage.setItem('silent_refresh', '1');
-    const params = new URLSearchParams({
-      client_id:     CLIENT_ID,
-      redirect_uri:  getRedirectURI(),
-      response_type: 'token',
-      scope:         SCOPES,
-      prompt:        'none',
-      login_hint:    savedEmail,
-    });
-    window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
+    updateAuthUI(false, savedEmail);
+    setStatus('👋 Sesión expirada — tocá Entrar para reconectar', false);
+    renderAll();
     return;
   }
 
@@ -1042,7 +991,7 @@ async function initGoogleAuth() {
 function signIn() {
   const params = new URLSearchParams({
     client_id:     CLIENT_ID,
-    redirect_uri:  getRedirectURI(),
+    redirect_uri:  'https://gerpress89-droid.github.io/finanzasgp/',
     response_type: 'token',
     scope:         SCOPES,
     prompt:        'select_account',
