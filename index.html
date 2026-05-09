@@ -1642,7 +1642,7 @@ function renderDiario() {
 
   const allEntries = Object.entries(gastosDiarios)
     .filter(([d])=> getMonthFromDate(d)===mes)
-    .flatMap(([d,arr])=>arr.map(e=>({...e,date:d})))
+    .flatMap(([d,arr])=>arr.map((e,i)=>({...e, date:d, _realIdx:i})))
     .sort((a,b)=>b.date.localeCompare(a.date));
 
   const totalAll = allEntries.reduce((a,e)=>a+e.amount,0);
@@ -1691,13 +1691,13 @@ function renderDiario() {
   listEl.innerHTML = diarioCategorias.map(cat => {
     const items = allEntries.filter(e=>e.tipo===cat.id);
     const tot = items.reduce((a,e)=>a+e.amount,0);
-    const rows = items.length ? items.map((e,idx)=>`
+    const rows = items.length ? items.map((e)=>`
       <div class="diario-item">
         <span class="diario-date">${e.date.slice(5).replace('-','/')}</span>
         <span class="diario-desc">${e.desc}</span>
         <span class="diario-amount" style="color:${cat.color}">${fmt(e.amount)}</span>
-        <button class="diario-del" title="Editar" onclick="editDiario('${e.date}','${cat.id}',${idx})" style="color:var(--muted)">✏️</button>
-        <button class="diario-del" title="Eliminar" onclick="deleteDiario('${e.date}','${cat.id}',${e.amount},${idx})">✕</button>
+        <button class="diario-del" title="Editar" onclick="editDiario('${e.date}','${cat.id}',${e._realIdx})" style="color:var(--muted)">✏️</button>
+        <button class="diario-del" title="Eliminar" onclick="deleteDiario('${e.date}','${cat.id}',${e.amount},${e._realIdx})">✕</button>
       </div>`).join('') :
       `<div style="padding:28px;text-align:center;color:var(--muted);font-size:var(--fs-sm);">Sin registros este mes</div>`;
     const duid = 'dc_' + cat.id + '_' + mes;
@@ -1780,17 +1780,12 @@ function openDiarioModal() {
   document.getElementById('diarioModalOverlay').classList.add('open');
 }
 
-function editDiario(date, tipo, displayIdx) {
-  const mes = getMonthFromDate(date);
-  const entries = Object.entries(gastosDiarios)
-    .filter(([d])=>getMonthFromDate(d)===mes)
-    .flatMap(([d,arr])=>arr.map(e=>({...e,date:d})))
-    .filter(e=>e.tipo===tipo)
-    .sort((a,b)=>b.date.localeCompare(a.date));
-  const target = entries[displayIdx];
-  if (!target) return;
+function editDiario(date, tipo, realIdx) {
+  const arr = gastosDiarios[date];
+  if (!arr || !arr[realIdx]) return;
+  const target = arr[realIdx];
 
-  _editingDiario = { date: target.date, tipo, desc: target.desc, amount: target.amount };
+  _editingDiario = { date, tipo, realIdx };
 
   document.getElementById('diarioModalTitle').textContent = '✏️ Editar gasto';
   document.getElementById('diarioModalSub').textContent = 'Modificá los datos y guardá';
@@ -1799,7 +1794,7 @@ function editDiario(date, tipo, displayIdx) {
   const sel = document.getElementById('diarioTipo');
   sel.innerHTML = diarioCategorias.map(c=>`<option value="${c.id}">${c.emoji} ${c.nombre}</option>`).join('');
   sel.value = tipo;
-  document.getElementById('diarioDate').value = target.date;
+  document.getElementById('diarioDate').value = date;
   document.getElementById('diarioDesc').value = target.desc;
   document.getElementById('diarioAmount').value = target.amount;
   document.getElementById('diarioModalOverlay').classList.add('open');
@@ -1914,14 +1909,11 @@ function saveDiarioEntry(){
   const tipo=document.getElementById('diarioTipo').value;
   if(!date||!desc||!amount||amount<=0){alert('Completá todos los campos');return;}
 
-  // EDIT MODE: remove old entry first
+  // EDIT MODE: remove old entry using exact index
   if (_editingDiario) {
-    const { date: oldDate, tipo: oldTipo, desc: oldDesc, amount: oldAmount } = _editingDiario;
-    if (gastosDiarios[oldDate]) {
-      const idx = gastosDiarios[oldDate].findIndex(e =>
-        e.tipo === oldTipo && e.desc === oldDesc && e.amount === oldAmount
-      );
-      if (idx >= 0) gastosDiarios[oldDate].splice(idx, 1);
+    const { date: oldDate, realIdx } = _editingDiario;
+    if (gastosDiarios[oldDate] && gastosDiarios[oldDate][realIdx] !== undefined) {
+      gastosDiarios[oldDate].splice(realIdx, 1);
       if (gastosDiarios[oldDate].length === 0) delete gastosDiarios[oldDate];
     }
     _editingDiario = null;
