@@ -1913,6 +1913,21 @@ function saveDiarioEntry(){
   const amount=parseFloat(document.getElementById('diarioAmount').value);
   const tipo=document.getElementById('diarioTipo').value;
   if(!date||!desc||!amount||amount<=0){alert('Completá todos los campos');return;}
+
+  // EDIT MODE: remove old entry first
+  if (_editingDiario) {
+    const { date: oldDate, tipo: oldTipo, desc: oldDesc, amount: oldAmount } = _editingDiario;
+    if (gastosDiarios[oldDate]) {
+      const idx = gastosDiarios[oldDate].findIndex(e =>
+        e.tipo === oldTipo && e.desc === oldDesc && e.amount === oldAmount
+      );
+      if (idx >= 0) gastosDiarios[oldDate].splice(idx, 1);
+      if (gastosDiarios[oldDate].length === 0) delete gastosDiarios[oldDate];
+    }
+    _editingDiario = null;
+  }
+
+  // Insert new / updated entry
   if(!gastosDiarios[date]) gastosDiarios[date]=[];
   gastosDiarios[date].push({tipo,desc,amount});
   const mes=getMonthFromDate(date);
