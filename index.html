@@ -573,6 +573,23 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .collapse-toggle { cursor: pointer; user-select: none; }
 .collapse-toggle::after { content: ' ▼'; font-size: 10px; color: var(--muted); margin-left: 6px; display: inline-block; }
 .collapse-toggle.open::after { content: ' ▲'; }
+
+/* ── Calculator ──────────────────────────────────────────────────────────── */
+.calc-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:3000;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.2s;}
+.calc-overlay.open{opacity:1;pointer-events:all;}
+.calc-panel{background:var(--surface);border:1px solid var(--border);border-radius:22px 22px 0 0;padding:18px 18px 28px;width:100%;max-width:380px;transform:translateY(100%);transition:transform 0.25s cubic-bezier(.4,0,.2,1);}
+.calc-overlay.open .calc-panel{transform:translateY(0);}
+.calc-display{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:12px;text-align:right;}
+.calc-expr{font-size:13px;color:var(--muted);min-height:18px;word-break:break-all;margin-bottom:4px;}
+.calc-result{font-family:'Playfair Display',serif;font-size:34px;font-weight:700;color:var(--accent);min-height:42px;word-break:break-all;}
+.calc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.calc-btn{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:15px 6px;font-family:'DM Sans',sans-serif;font-size:18px;font-weight:600;color:var(--text);cursor:pointer;transition:all 0.12s;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+.calc-btn:active{transform:scale(0.92);background:var(--border);}
+.calc-btn.op{color:var(--accent2);background:rgba(138,174,238,0.08);}
+.calc-btn.eq{background:var(--accent);color:#0d0f14;border-color:var(--accent);}
+.calc-btn.del{color:var(--red);}
+.calc-btn.use{background:var(--green);color:#0d0f14;border-color:var(--green);grid-column:span 2;font-size:14px;font-weight:700;}
+.calc-btn.cancel-calc{grid-column:span 2;font-size:14px;color:var(--muted);}
 </style>
 
 </head>
@@ -726,8 +743,8 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 <!-- Modal: registro diario -->
 <div class="modal-overlay" id="diarioModalOverlay">
   <div class="modal" style="max-width:440px">
-    <h2>Registrar gasto</h2>
-    <div class="modal-sub">Ingresá el detalle del gasto</div>
+    <h2 id="diarioModalTitle">Registrar gasto</h2>
+    <div class="modal-sub" id="diarioModalSub">Ingresá el detalle del gasto</div>
     <div class="modal-field">
       <label class="modal-label">Categoría</label>
       <select id="diarioTipo" class="modal-input" style="color-scheme:dark;"></select>
@@ -742,11 +759,48 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
     </div>
     <div class="modal-field">
       <label class="modal-label">Importe ($)</label>
-      <input type="number" id="diarioAmount" class="modal-input" placeholder="0">
+      <input type="number" id="diarioAmount" class="modal-input" placeholder="Tocá para abrir calculadora" readonly onclick="openCalc()" style="cursor:pointer;">
     </div>
     <div class="modal-footer">
       <button class="btn-ghost" onclick="closeDiarioModal()">Cancelar</button>
-      <button class="btn" onclick="saveDiarioEntry()">Guardar</button>
+      <button class="btn" id="diarioSaveBtn" onclick="saveDiarioEntry()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Calculator modal -->
+<div class="calc-overlay" id="calcOverlay" onclick="calcOverlayClick(event)">
+  <div class="calc-panel">
+    <div class="calc-display">
+      <div class="calc-expr" id="calcExpr"></div>
+      <div class="calc-result" id="calcResult">0</div>
+    </div>
+    <div class="calc-grid">
+      <button class="calc-btn" onclick="calcInput('7')">7</button>
+      <button class="calc-btn" onclick="calcInput('8')">8</button>
+      <button class="calc-btn" onclick="calcInput('9')">9</button>
+      <button class="calc-btn op" onclick="calcInput('÷')">÷</button>
+
+      <button class="calc-btn" onclick="calcInput('4')">4</button>
+      <button class="calc-btn" onclick="calcInput('5')">5</button>
+      <button class="calc-btn" onclick="calcInput('6')">6</button>
+      <button class="calc-btn op" onclick="calcInput('×')">×</button>
+
+      <button class="calc-btn" onclick="calcInput('1')">1</button>
+      <button class="calc-btn" onclick="calcInput('2')">2</button>
+      <button class="calc-btn" onclick="calcInput('3')">3</button>
+      <button class="calc-btn op" onclick="calcInput('-')">−</button>
+
+      <button class="calc-btn" onclick="calcInput('0')">0</button>
+      <button class="calc-btn" onclick="calcInput('.')">.</button>
+      <button class="calc-btn eq" onclick="calcEquals()">=</button>
+      <button class="calc-btn op" onclick="calcInput('+')">+</button>
+
+      <button class="calc-btn del" onclick="calcDel()">⌫</button>
+      <button class="calc-btn del" onclick="calcClear()">C</button>
+      <button class="calc-btn use" onclick="calcUse()">✓ Usar resultado</button>
+
+      <button class="calc-btn cancel-calc" onclick="closeCalc()" style="grid-column:span 4;margin-top:2px;">Cancelar</button>
     </div>
   </div>
 </div>
@@ -1642,7 +1696,8 @@ function renderDiario() {
         <span class="diario-date">${e.date.slice(5).replace('-','/')}</span>
         <span class="diario-desc">${e.desc}</span>
         <span class="diario-amount" style="color:${cat.color}">${fmt(e.amount)}</span>
-        <button class="diario-del" onclick="deleteDiario('${e.date}','${cat.id}',${e.amount},${idx})">✕</button>
+        <button class="diario-del" title="Editar" onclick="editDiario('${e.date}','${cat.id}',${idx})" style="color:var(--muted)">✏️</button>
+        <button class="diario-del" title="Eliminar" onclick="deleteDiario('${e.date}','${cat.id}',${e.amount},${idx})">✕</button>
       </div>`).join('') :
       `<div style="padding:28px;text-align:center;color:var(--muted);font-size:var(--fs-sm);">Sin registros este mes</div>`;
     const duid = 'dc_' + cat.id + '_' + mes;
@@ -1710,7 +1765,13 @@ function deleteDiario(date,tipo,amount,displayIdx) {
   renderDiario();
 }
 
+let _editingDiario = null; // {date, tipo, idx} when editing
+
 function openDiarioModal() {
+  _editingDiario = null;
+  document.getElementById('diarioModalTitle').textContent = 'Registrar gasto';
+  document.getElementById('diarioModalSub').textContent = 'Ingresá el detalle del gasto';
+  document.getElementById('diarioSaveBtn').textContent = 'Guardar';
   const sel = document.getElementById('diarioTipo');
   sel.innerHTML = diarioCategorias.map(c=>`<option value="${c.id}">${c.emoji} ${c.nombre}</option>`).join('');
   document.getElementById('diarioDate').value=new Date().toISOString().slice(0,10);
@@ -1718,6 +1779,133 @@ function openDiarioModal() {
   document.getElementById('diarioAmount').value='';
   document.getElementById('diarioModalOverlay').classList.add('open');
 }
+
+function editDiario(date, tipo, displayIdx) {
+  const mes = getMonthFromDate(date);
+  const entries = Object.entries(gastosDiarios)
+    .filter(([d])=>getMonthFromDate(d)===mes)
+    .flatMap(([d,arr])=>arr.map(e=>({...e,date:d})))
+    .filter(e=>e.tipo===tipo)
+    .sort((a,b)=>b.date.localeCompare(a.date));
+  const target = entries[displayIdx];
+  if (!target) return;
+
+  _editingDiario = { date: target.date, tipo, desc: target.desc, amount: target.amount };
+
+  document.getElementById('diarioModalTitle').textContent = '✏️ Editar gasto';
+  document.getElementById('diarioModalSub').textContent = 'Modificá los datos y guardá';
+  document.getElementById('diarioSaveBtn').textContent = 'Actualizar';
+
+  const sel = document.getElementById('diarioTipo');
+  sel.innerHTML = diarioCategorias.map(c=>`<option value="${c.id}">${c.emoji} ${c.nombre}</option>`).join('');
+  sel.value = tipo;
+  document.getElementById('diarioDate').value = target.date;
+  document.getElementById('diarioDesc').value = target.desc;
+  document.getElementById('diarioAmount').value = target.amount;
+  document.getElementById('diarioModalOverlay').classList.add('open');
+}
+// ── Calculator ────────────────────────────────────────────────────────────────
+let calcExpr = '';
+let calcHasResult = false;
+
+function openCalc() {
+  const current = document.getElementById('diarioAmount').value;
+  calcExpr = current && parseFloat(current) > 0 ? current : '';
+  calcHasResult = false;
+  updateCalcDisplay();
+  document.getElementById('calcOverlay').classList.add('open');
+}
+function closeCalc() {
+  document.getElementById('calcOverlay').classList.remove('open');
+}
+function calcOverlayClick(e) {
+  if (e.target === document.getElementById('calcOverlay')) closeCalc();
+}
+
+function updateCalcDisplay() {
+  document.getElementById('calcExpr').textContent = calcExpr || '';
+  // Evaluate current expr for live preview
+  try {
+    const normalized = calcExpr.replace(/÷/g,'/').replace(/×/g,'*').replace(/−/g,'-');
+    // Only evaluate if ends with a digit
+    if (/[\d.]$/.test(normalized) && normalized.length > 0) {
+      const val = Function('"use strict"; return (' + normalized + ')')();
+      if (isFinite(val)) {
+        document.getElementById('calcResult').textContent = formatCalcNum(val);
+        return;
+      }
+    }
+  } catch(e) {}
+  document.getElementById('calcResult').textContent = calcExpr ? '…' : '0';
+}
+
+function formatCalcNum(n) {
+  if (Number.isInteger(n)) return n.toLocaleString('es-AR');
+  return parseFloat(n.toFixed(2)).toLocaleString('es-AR');
+}
+
+function calcInput(ch) {
+  const ops = ['+','-','×','÷'];
+  const isOp = ops.includes(ch);
+  // If we had a result and user types a digit, start fresh
+  if (calcHasResult && !isOp) { calcExpr = ''; calcHasResult = false; }
+  // If we had a result and user types op, continue from result
+  if (calcHasResult && isOp) calcHasResult = false;
+  // Don't allow two ops in a row
+  if (isOp && calcExpr.length > 0 && ops.some(o => calcExpr.endsWith(o))) {
+    calcExpr = calcExpr.slice(0, -1);
+  }
+  // Don't allow leading op except minus
+  if (isOp && calcExpr === '' && ch !== '-') return;
+  // Decimal point
+  if (ch === '.') {
+    // find last number segment
+    const parts = calcExpr.split(/[+\-×÷]/);
+    if (parts[parts.length-1].includes('.')) return;
+  }
+  calcExpr += ch;
+  updateCalcDisplay();
+}
+
+function calcDel() {
+  calcExpr = calcExpr.slice(0, -1);
+  calcHasResult = false;
+  updateCalcDisplay();
+}
+
+function calcClear() {
+  calcExpr = '';
+  calcHasResult = false;
+  updateCalcDisplay();
+}
+
+function calcEquals() {
+  try {
+    const normalized = calcExpr.replace(/÷/g,'/').replace(/×/g,'*').replace(/−/g,'-');
+    const val = Function('"use strict"; return (' + normalized + ')')();
+    if (isFinite(val) && val >= 0) {
+      const rounded = Math.round(val * 100) / 100;
+      document.getElementById('calcExpr').textContent = calcExpr + ' =';
+      document.getElementById('calcResult').textContent = formatCalcNum(rounded);
+      calcExpr = String(rounded);
+      calcHasResult = true;
+    }
+  } catch(e) {}
+}
+
+function calcUse() {
+  try {
+    const normalized = calcExpr.replace(/÷/g,'/').replace(/×/g,'*').replace(/−/g,'-');
+    const val = Function('"use strict"; return (' + normalized + ')')();
+    if (isFinite(val) && val > 0) {
+      const rounded = Math.round(val * 100) / 100;
+      document.getElementById('diarioAmount').value = rounded;
+      closeCalc();
+      document.getElementById('diarioDesc').focus();
+    }
+  } catch(e) {}
+}
+
 function closeDiarioModal(){document.getElementById('diarioModalOverlay').classList.remove('open');}
 function saveDiarioEntry(){
   const date=document.getElementById('diarioDate').value;
