@@ -1775,20 +1775,11 @@ function syncDiarioToMonth(mes) {
   });
 }
 
-function deleteDiario(date,tipo,amount,displayIdx) {
-  if(!gastosDiarios[date]) return;
-  const mes=getMonthFromDate(date);
-  const entries=Object.entries(gastosDiarios)
-    .filter(([d])=>getMonthFromDate(d)===mes)
-    .flatMap(([d,arr])=>arr.map(e=>({...e,date:d})))
-    .filter(e=>e.tipo===tipo)
-    .sort((a,b)=>b.date.localeCompare(a.date));
-  const target=entries[displayIdx];
-  if(!target) return;
-  const arr=gastosDiarios[target.date];
-  const i=arr.findIndex(e=>e.tipo===target.tipo&&Math.abs(e.amount-target.amount)<0.01&&e.desc===target.desc);
-  if(i>=0) arr.splice(i,1);
-  if(!arr.length) delete gastosDiarios[target.date];
+function deleteDiario(date,tipo,amount,realIdx) {
+  const arr = gastosDiarios[date];
+  if (!arr || !arr[realIdx]) return;
+  arr.splice(realIdx, 1);
+  if (!arr.length) delete gastosDiarios[date];
   renderDiario();
 }
 
