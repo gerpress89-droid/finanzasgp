@@ -574,6 +574,12 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .collapse-toggle::after { content: ' ▼'; font-size: 10px; color: var(--muted); margin-left: 6px; display: inline-block; }
 .collapse-toggle.open::after { content: ' ▲'; }
 
+/* Item edit button */
+.item-edit-btn{background:none;border:none;cursor:pointer;font-size:13px;padding:2px 6px;opacity:0;transition:opacity 0.15s;margin-left:auto;flex-shrink:0;}
+.control-item:hover .item-edit-btn{opacity:1;}
+.control-item.checked .item-edit-btn{opacity:0.3;}
+@media (max-width:600px){.item-edit-btn{opacity:0.5;}}
+
 /* ── Calculator ──────────────────────────────────────────────────────────── */
 .calc-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:3000;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.2s;}
 .calc-overlay.open{opacity:1;pointer-events:all;}
@@ -764,6 +770,26 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
     <div class="modal-footer">
       <button class="btn-ghost" onclick="closeDiarioModal()">Cancelar</button>
       <button class="btn" id="diarioSaveBtn" onclick="saveDiarioEntry()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: editar item de gastos/ingresos -->
+<div class="modal-overlay" id="itemEditOverlay">
+  <div class="modal" style="max-width:400px">
+    <h2 id="itemEditTitle">✏️ Editar item</h2>
+    <div class="modal-sub" id="itemEditSub">Modificá el nombre y/o el importe</div>
+    <div class="modal-field">
+      <label class="modal-label">Nombre</label>
+      <input type="text" id="itemEditLabel" class="modal-input" placeholder="Nombre del item">
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Importe ($)</label>
+      <input type="number" id="itemEditAmount" class="modal-input" placeholder="Tocá para abrir calculadora" readonly onclick="openItemCalc()" style="cursor:pointer;">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeItemEdit()">Cancelar</button>
+      <button class="btn" onclick="saveItemEdit()">Actualizar</button>
     </div>
   </div>
 </div>
@@ -1540,6 +1566,7 @@ function renderControlGrid() {
         <div class="check-box ${item.done?'done':''}" onclick="toggleCheck('${section}',${idx})"></div>
         <span class="item-name">${item.label}</span>
         <span class="item-amount ${colorClass}">${fmt(item.amount)}</span>
+        <button class="item-edit-btn" onclick="openItemEdit('${section}',${idx})" title="Editar">✏️</button>
       </div>`).join('');
     const uid = 'cc_'+section+'_'+currentMonth;
     return `
@@ -1799,14 +1826,61 @@ function editDiario(date, tipo, realIdx) {
   document.getElementById('diarioAmount').value = target.amount;
   document.getElementById('diarioModalOverlay').classList.add('open');
 }
-// ── Calculator ────────────────────────────────────────────────────────────────
+// ── Item edit (gastos & ingresos) ─────────────────────────────────────────────
+let _editingItem = null; // {section, idx}
+
+function openItemEdit(section, idx) {
+  const data = allData[currentMonth];
+  if (!data) return;
+  const item = data[section] && data[section][idx];
+  if (!item) return;
+  _editingItem = { section, idx };
+  const labels = { clients: 'cliente', salary: 'ingreso', expenses: 'gasto' };
+  document.getElementById('itemEditTitle').textContent = '✏️ Editar ' + (labels[section]||'item');
+  document.getElementById('itemEditSub').textContent = 'Modificá el nombre y/o el importe';
+  document.getElementById('itemEditLabel').value = item.label;
+  document.getElementById('itemEditAmount').value = item.amount;
+  document.getElementById('itemEditOverlay').classList.add('open');
+}
+
+function closeItemEdit() {
+  document.getElementById('itemEditOverlay').classList.remove('open');
+  _editingItem = null;
+}
+
+function saveItemEdit() {
+  if (!_editingItem) return;
+  const { section, idx } = _editingItem;
+  const label  = document.getElementById('itemEditLabel').value.trim();
+  const amount = parseFloat(document.getElementById('itemEditAmount').value);
+  if (!label) { alert('Ingresá un nombre'); return; }
+  if (!amount || amount <= 0) { alert('Ingresá un importe válido'); return; }
+  const item = allData[currentMonth][section][idx];
+  item.label  = label;
+  item.amount = amount;
+  closeItemEdit();
+  renderGastos();
+  scheduleSave();
+}
+
+function openItemCalc() {
+  const current = document.getElementById('itemEditAmount').value;
+  calcExpr = current && parseFloat(current) > 0 ? current : '';
+  calcHasResult = false;
+  updateCalcDisplay();
+  // Override calcUse to target itemEditAmount
+  _calcTarget = 'itemEditAmount';
+  document.getElementById('calcOverlay').classList.add('open');
+}
 let calcExpr = '';
 let calcHasResult = false;
+let _calcTarget = 'diarioAmount';
 
 function openCalc() {
   const current = document.getElementById('diarioAmount').value;
   calcExpr = current && parseFloat(current) > 0 ? current : '';
   calcHasResult = false;
+  _calcTarget = 'diarioAmount';
   updateCalcDisplay();
   document.getElementById('calcOverlay').classList.add('open');
 }
@@ -1894,9 +1968,9 @@ function calcUse() {
     const val = Function('"use strict"; return (' + normalized + ')')();
     if (isFinite(val) && val > 0) {
       const rounded = Math.round(val * 100) / 100;
-      document.getElementById('diarioAmount').value = rounded;
+      document.getElementById(_calcTarget).value = rounded;
       closeCalc();
-      document.getElementById('diarioDesc').focus();
+      if (_calcTarget === 'diarioAmount') document.getElementById('diarioDesc').focus();
     }
   } catch(e) {}
 }
