@@ -2422,6 +2422,24 @@ function renderObjetivos(){
   renderObjChart();
 }
 
+
+// DEBUG: call debugObjSync() in browser console to see state
+function debugObjSync() {
+  console.log('=== OBJETIVOS ===');
+  objetivos.forEach((obj, i) => {
+    console.log(i, obj.nombre, obj.emoji);
+    console.log('  meses:', JSON.stringify(obj.meses));
+    console.log('  mesesLabels:', JSON.stringify(obj.mesesLabels));
+    console.log('  checks:', JSON.stringify(obj.checks));
+  });
+  console.log('=== ALLDATA expenses ===');
+  for (let mi = 0; mi <= 11; mi++) {
+    if (allData[mi] && allData[mi].expenses && allData[mi].expenses.length) {
+      console.log('Month', mi, ':', allData[mi].expenses.map(e => e.label + '=' + e.amount));
+    }
+  }
+}
+
 // Rebuild ALL objective expenses in allData from scratch based on current checks.
 // This prevents orphaned expenses regardless of history or order of operations.
 function resyncAllObjToGastos() {
