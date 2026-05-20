@@ -270,6 +270,9 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
   margin: 0 -28px;
   padding: 0 28px;
 }
+@media(min-width:701px){
+  .sticky-nav { margin: 0 -28px; }
+}
 .sticky-nav-top {
   display: flex;
   align-items: center;
@@ -345,13 +348,19 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .sticky-month-nav.hidden { display: none; }
 
 /* ── MOBILE RESPONSIVE (≤600px) ─────────────────────────────────────────── */
-@media(max-width:600px){
+@media(max-width:700px){
+  .sidebar{transform:translateX(-100%);transition:transform 0.25s ease,width 0.25s ease;}
+  .sidebar.mobile-open{transform:translateX(0);width:220px !important;}
+  .app-main{margin-left:0 !important;}
+  .mobile-menu-btn{display:flex;}
   .sticky-nav { margin: 0 -10px; padding: 0 10px; }
   .sticky-tabs { margin: 0 -10px; padding: 0 6px; gap: 4px; flex-wrap: wrap; }
   .sticky-tabs .tab-btn { flex: 1 1 calc(50% - 4px); font-size: 13px !important; padding: 10px 6px !important; white-space: nowrap; text-align: center; min-width: 0; }
   .sticky-month-nav { margin: 0 -10px; padding: 8px 10px; }
   .sticky-nav-status span { max-width: 120px; }
-
+  .fab-container{bottom:18px;right:16px;}
+}
+@media(max-width:600px){
   /* Layout */
   .wrapper{padding:14px 10px;}
   body{font-size:13px;}
@@ -600,6 +609,57 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 
 </head>
 <body>
+
+<!-- Mobile overlay -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileSidebar()"></div>
+
+<!-- Mobile hamburger -->
+<button class="mobile-menu-btn" onclick="toggleMobileSidebar()" aria-label="Menú">☰</button>
+
+<!-- ── SIDEBAR ─────────────────────────────────────────────────────────── -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <span class="sidebar-logo-icon">💰</span>
+    <span class="sidebar-logo-text">Finanzas</span>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="sidebar-nav-item active" id="snav-gastos" onclick="switchTab('gastos')">
+      <span class="sni-icon">📊</span>
+      <span class="sni-label">Gastos & Ingresos</span>
+      <span class="sidebar-tooltip">Gastos & Ingresos</span>
+    </div>
+    <div class="sidebar-nav-item" id="snav-diario" onclick="switchTab('diario')">
+      <span class="sni-icon">📝</span>
+      <span class="sni-label">Registro Diario</span>
+      <span class="sidebar-tooltip">Registro Diario</span>
+    </div>
+    <div class="sidebar-nav-item" id="snav-objetivos" onclick="switchTab('objetivos')">
+      <span class="sni-icon">🎯</span>
+      <span class="sni-label">Objetivos de Ahorro</span>
+      <span class="sidebar-tooltip">Objetivos de Ahorro</span>
+    </div>
+    <div class="sidebar-nav-item" id="snav-anual" onclick="switchTab('anual')">
+      <span class="sni-icon">📈</span>
+      <span class="sni-label">Comparativo Anual</span>
+      <span class="sidebar-tooltip">Comparativo Anual</span>
+    </div>
+  </nav>
+  <div class="sidebar-bottom">
+    <div class="sidebar-toggle" onclick="toggleSidebar()" title="Colapsar menú">
+      <span class="sidebar-toggle-icon">◀</span>
+      <span class="sidebar-toggle-label">Colapsar</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── FAB ──────────────────────────────────────────────────────────────── -->
+<div class="fab-container" id="fabContainer">
+  <div class="fab-menu" id="fabMenu"></div>
+  <button class="fab-btn" id="fabBtn" onclick="toggleFab()" aria-label="Registrar gasto rápido">+</button>
+</div>
+
+<!-- ── MAIN ─────────────────────────────────────────────────────────────── -->
+<div class="app-main" id="appMain">
 <div class="wrapper">
 
   <!-- Header limpio — solo título y año -->
@@ -744,7 +804,8 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
       </div>
     </div>
   </div>
-</div>
+</div><!-- /.wrapper -->
+</div><!-- /.app-main -->
 
 <!-- Modal: registro diario -->
 <div class="modal-overlay" id="diarioModalOverlay">
@@ -1404,6 +1465,11 @@ function switchTab(t) {
   const tabs = ['gastos','diario','objetivos','anual'];
   document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', tabs[i]===t));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id==='tab-'+t));
+  // Update sidebar active state
+  tabs.forEach(tab => {
+    const el = document.getElementById('snav-'+tab);
+    if (el) el.classList.toggle('active', tab===t);
+  });
   // Mostrar/ocultar selector de meses sticky solo en la pestaña Gastos
   const smn = document.getElementById('stickyMonthNav');
   if (smn) smn.classList.toggle('hidden', t !== 'gastos');
@@ -1413,6 +1479,8 @@ function switchTab(t) {
     renderDiario();
   }
   if (t==='anual') renderAnual();
+  // Close mobile sidebar after navigation
+  closeMobileSidebar();
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -2840,6 +2908,67 @@ function renderAll(){
 
 setInterval(saveToSheet, 30000);
 setInterval(saveToSheet, 60000);
+
+// ── Sidebar ────────────────────────────────────────────────────────────────
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const main = document.getElementById('appMain');
+  const collapsed = sb.classList.toggle('collapsed');
+  if (main) main.classList.toggle('sidebar-collapsed', collapsed);
+  localStorage.setItem('sidebar_collapsed', collapsed ? '1' : '0');
+}
+function toggleMobileSidebar() {
+  document.getElementById('sidebar').classList.add('mobile-open');
+  document.getElementById('sidebarOverlay').classList.add('open');
+}
+function closeMobileSidebar() {
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebarOverlay').classList.remove('open');
+}
+// Restore sidebar collapsed state
+(function() {
+  if (localStorage.getItem('sidebar_collapsed') === '1') {
+    const sb = document.getElementById('sidebar');
+    const main = document.getElementById('appMain');
+    if (sb) sb.classList.add('collapsed');
+    if (main) main.classList.add('sidebar-collapsed');
+  }
+})();
+
+// ── FAB (gasto rápido) ──────────────────────────────────────────────────────
+let _fabOpen = false;
+function buildFabMenu() {
+  const menu = document.getElementById('fabMenu');
+  if (!menu) return;
+  menu.innerHTML = diarioCategorias.map(cat => `
+    <button class="fab-cat-btn" onclick="fabOpenDiario('${cat.id}')">
+      <span class="fab-cat-dot" style="background:${cat.color}"></span>
+      ${cat.emoji} ${cat.nombre}
+    </button>`).join('');
+}
+function toggleFab() {
+  _fabOpen = !_fabOpen;
+  document.getElementById('fabMenu').classList.toggle('open', _fabOpen);
+  const btn = document.getElementById('fabBtn');
+  btn.textContent = _fabOpen ? '✕' : '+';
+  btn.classList.toggle('open', _fabOpen);
+  if (_fabOpen) buildFabMenu();
+}
+function fabOpenDiario(catId) {
+  toggleFab(); // close FAB menu
+  _editingDiario = null;
+  document.getElementById('diarioModalTitle').textContent = 'Registrar gasto';
+  document.getElementById('diarioModalSub').textContent = 'Ingresá el detalle del gasto';
+  document.getElementById('diarioSaveBtn').textContent = 'Guardar';
+  const sel = document.getElementById('diarioTipo');
+  sel.innerHTML = diarioCategorias.map(c=>`<option value="${c.id}">${c.emoji} ${c.nombre}</option>`).join('');
+  sel.value = catId;
+  document.getElementById('diarioDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('diarioDesc').value = '';
+  document.getElementById('diarioAmount').value = '';
+  document.getElementById('diarioModalOverlay').classList.add('open');
+}
+
 initGoogleAuth();
 </script>
 </body>
