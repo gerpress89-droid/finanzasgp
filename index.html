@@ -2241,6 +2241,13 @@ function addPeriodoRow(btn) {
 function saveObjModal(){
   const cont=document.getElementById('objEditContainer');
   const items=cont.querySelectorAll('.obj-modal-item');
+  // Snapshot OLD state before overwriting objetivos
+  const oldObjetivos = objetivos.map(o=>({
+    nombre: o.nombre||'',
+    emoji:  o.emoji||'',
+    checks: Object.assign({}, o.checks||{}),
+    mesesLabels: Object.assign({}, o.mesesLabels||{})
+  }));
   objetivos=[...items].map((item,itemIdx)=>{
     const meses={};
     const mesesLabels={};
@@ -2262,8 +2269,8 @@ function saveObjModal(){
       newKeys.push(key);
     });
 
-    // Preserve checks for keys that still exist
-    const oldObj = objetivos[itemIdx] || {};
+    // Use snapshotted old state (before objetivos was overwritten)
+    const oldObj = oldObjetivos[itemIdx] || {};
     const oldChecks = oldObj.checks || {};
     const checks = {};
     newKeys.forEach(k => {
@@ -2271,13 +2278,13 @@ function saveObjModal(){
     });
 
     // Clean up gastos for checked periods that disappeared (key changed or deleted)
-    const oldName  = oldObj.nombre  || '';
-    const oldEmoji = oldObj.emoji   || '';
-    const oldMesesLabels = oldObj.mesesLabels || {};
+    const oldName  = oldObj.nombre;
+    const oldEmoji = oldObj.emoji;
+    const oldMesesLabels = oldObj.mesesLabels;
     Object.keys(oldChecks).forEach(oldKey => {
       if(oldChecks[oldKey]===true && !newKeys.includes(oldKey)){
         // This checked period no longer exists — remove its expense from allData
-        const customLabel = oldMesesLabels[oldKey] ? oldMesesLabels[oldKey] : '';
+        const customLabel = oldMesesLabels[oldKey] || '';
         const expLabel = oldEmoji + ' ' + oldName + (customLabel ? ' — ' + customLabel : '');
         // Resolve month index from old key
         let monthIdx = null;
@@ -2477,12 +2484,21 @@ function syncObjPeriodToGastos(obj, key, isChecked){
     }
     setStatus('✅ "' + expLabel + '" agregado en gastos de ' + MONTHS[monthIdx], false);
   } else {
-    // Remove expense
+    // Remove expense from the expected month
     const removeIdx = exp.findIndex(e => e.label === expLabel);
     if(removeIdx >= 0) exp.splice(removeIdx, 1);
+    // Also scan ALL months for orphaned copies of this label (e.g. month was changed in modal)
+    for(let mi = 0; mi <= 11; mi++){
+      if(mi === monthIdx || !allData[mi]) continue;
+      const otherExp = allData[mi].expenses;
+      const orphanIdx = otherExp.findIndex(e => e.label === expLabel);
+      if(orphanIdx >= 0) otherExp.splice(orphanIdx, 1);
+      const m = allData[mi];
+      if(m && !m.clients.length && !m.salary.length && !m.expenses.length) delete allData[mi];
+    }
     // If month is now empty (only had this objective expense), clean it up
     const m = allData[monthIdx];
-    if(!m.clients.length && !m.salary.length && !m.expenses.length){
+    if(m && !m.clients.length && !m.salary.length && !m.expenses.length){
       delete allData[monthIdx];
     }
     setStatus('🗑️ "' + expLabel + '" removido de gastos de ' + MONTHS[monthIdx], false);
