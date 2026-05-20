@@ -2320,7 +2320,9 @@ function saveObjModal(){
     };
   }).filter(o=>o.nombre);
   closeObjModal();
+  resyncAllObjToGastos();
   renderObjetivos();
+  renderMonthNav(); renderKPIs(); renderControlGrid(); renderCharts();
 }
 
 // ── Objetivos render ──────────────────────────────────────────────────────────
@@ -2420,17 +2422,57 @@ function renderObjetivos(){
   renderObjChart();
 }
 
+// Rebuild ALL objective expenses in allData from scratch based on current checks.
+// This prevents orphaned expenses regardless of history or order of operations.
+function resyncAllObjToGastos() {
+  // Step 1: collect all possible obj expense labels and remove them from allData
+  const allObjLabels = new Set();
+  objetivos.forEach(obj => {
+    Object.keys(obj.meses || {}).forEach(k => {
+      const customLabel = (obj.mesesLabels && obj.mesesLabels[k]) ? obj.mesesLabels[k] : '';
+      allObjLabels.add(obj.emoji + ' ' + obj.nombre + (customLabel ? ' — ' + customLabel : ''));
+    });
+  });
+  for (let mi = 0; mi <= 11; mi++) {
+    if (!allData[mi]) continue;
+    allData[mi].expenses = allData[mi].expenses.filter(e => !allObjLabels.has(e.label));
+    const m = allData[mi];
+    if (!m.clients.length && !m.salary.length && !m.expenses.length) delete allData[mi];
+  }
+  // Step 2: re-add only the checked ones
+  objetivos.forEach(obj => {
+    if (!obj.checks) return;
+    Object.keys(obj.checks).forEach(k => {
+      if (obj.checks[k] !== true) return;
+      if (!obj.meses || !obj.meses[k]) return;
+      const customLabel = (obj.mesesLabels && obj.mesesLabels[k]) ? obj.mesesLabels[k] : '';
+      const expLabel = obj.emoji + ' ' + obj.nombre + (customLabel ? ' — ' + customLabel : '');
+      const amount = obj.meses[k];
+      let monthIdx = null;
+      if (String(k).includes('-')) {
+        const parts = k.split('-');
+        if (parseInt(parts[0]) === dashboardYear) monthIdx = parseInt(parts[1]) - 1;
+      } else if (k === '5b') { monthIdx = 5; }
+      else if (k === '12b') { monthIdx = 11; }
+      else { const mi = parseInt(k); if (!isNaN(mi) && mi >= 0 && mi <= 11) monthIdx = mi; }
+      if (monthIdx === null) return;
+      if (!allData[monthIdx]) allData[monthIdx] = { clients: [], salary: [], expenses: [] };
+      const exp = allData[monthIdx].expenses;
+      const existing = exp.findIndex(e => e.label === expLabel);
+      if (existing >= 0) { exp[existing].amount = amount; exp[existing].done = true; }
+      else exp.push({ label: expLabel, amount, done: true });
+    });
+  });
+}
+
 function toggleObjPeriod(oi, key){
   const obj=objetivos[oi];
   if(!obj.checks) obj.checks={};
-  const wasChecked = obj.checks[key]===true;
-  obj.checks[key] = !wasChecked;  // toggle
+  obj.checks[key] = obj.checks[key] !== true;  // toggle
 
-  // Sync to allData: add/remove expense for this objective in the relevant month
-  syncObjPeriodToGastos(obj, key, !wasChecked);
+  resyncAllObjToGastos();
 
   renderObjetivos();
-  // Also refresh gastos if visible
   renderMonthNav(); renderKPIs(); renderControlGrid(); renderCharts();
 }
 
