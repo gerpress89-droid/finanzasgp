@@ -2270,6 +2270,34 @@ function saveObjModal(){
       if(oldChecks[k]===true) checks[k]=true;
     });
 
+    // Clean up gastos for checked periods that disappeared (key changed or deleted)
+    const oldName  = oldObj.nombre  || '';
+    const oldEmoji = oldObj.emoji   || '';
+    const oldMesesLabels = oldObj.mesesLabels || {};
+    Object.keys(oldChecks).forEach(oldKey => {
+      if(oldChecks[oldKey]===true && !newKeys.includes(oldKey)){
+        // This checked period no longer exists — remove its expense from allData
+        const customLabel = oldMesesLabels[oldKey] ? oldMesesLabels[oldKey] : '';
+        const expLabel = oldEmoji + ' ' + oldName + (customLabel ? ' — ' + customLabel : '');
+        // Resolve month index from old key
+        let monthIdx = null;
+        if(String(oldKey).includes('-')){
+          const parts = oldKey.split('-');
+          if(parseInt(parts[0]) === dashboardYear) monthIdx = parseInt(parts[1]) - 1;
+        } else {
+          const mi = parseInt(oldKey);
+          if(!isNaN(mi) && mi >= 0 && mi <= 11) monthIdx = mi;
+        }
+        if(monthIdx !== null && allData[monthIdx]){
+          const exp = allData[monthIdx].expenses;
+          const removeIdx = exp.findIndex(e => e.label === expLabel);
+          if(removeIdx >= 0) exp.splice(removeIdx, 1);
+          const m = allData[monthIdx];
+          if(!m.clients.length && !m.salary.length && !m.expenses.length) delete allData[monthIdx];
+        }
+      }
+    });
+
     const subgoals=[...item.querySelectorAll('.obj-sub-fields .field-row')].map(row=>{
       const ins=row.querySelectorAll('input');
       const label=ins[0].value.trim();
