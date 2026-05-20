@@ -645,6 +645,10 @@ body{display:flex;}
   .app-main{margin-left:0!important;}
   .mobile-menu-btn{display:flex;align-items:center;}
   .fab-container{bottom:18px;right:16px;}
+  /* Ocultar tabs duplicados — el sidebar los reemplaza */
+  .sticky-tabs{display:none!important;}
+  /* Mover sticky-nav-top para no chocar con el botón hamburguesa */
+  .sticky-nav-top{padding-left:52px;}
 }
 </style>
 
@@ -2853,8 +2857,15 @@ function toggleSidebar(){
   localStorage.setItem('sb_collapsed',c?'1':'0');
 }
 function toggleMobileSidebar(){
-  document.getElementById('sidebar').classList.add('mobile-open');
-  document.getElementById('sidebarOverlay').classList.add('open');
+  const sb=document.getElementById('sidebar');
+  const ov=document.getElementById('sidebarOverlay');
+  if(sb.classList.contains('mobile-open')){
+    sb.classList.remove('mobile-open');
+    ov.classList.remove('open');
+  } else {
+    sb.classList.add('mobile-open');
+    ov.classList.add('open');
+  }
 }
 function closeMobileSidebar(){
   document.getElementById('sidebar').classList.remove('mobile-open');
@@ -2881,8 +2892,10 @@ function toggleFab(){
 }
 function buildFabMenu(){
   const menu=document.getElementById('fabMenu');
-  if(!menu||!window.diarioCategorias) return;
-  menu.innerHTML=diarioCategorias.map(cat=>`
+  if(!menu) return;
+  const cats=typeof diarioCategorias!=='undefined'?diarioCategorias:[];
+  if(!cats.length){ menu.innerHTML='<div style="color:var(--muted);font-size:12px;padding:8px 14px;">Sin categorías</div>'; return; }
+  menu.innerHTML=cats.map(cat=>`
     <button class="fab-cat-btn" onclick="fabQuickAdd('${cat.id}')">
       <span class="fab-cat-dot" style="background:${cat.color}"></span>
       ${cat.emoji} ${cat.nombre}
@@ -2890,17 +2903,19 @@ function buildFabMenu(){
 }
 function fabQuickAdd(catId){
   if(_fabOpen) toggleFab();
+  if(typeof openDiarioModal==='function'){ openDiarioModal(); }
   _editingDiario=null;
+  const cats=typeof diarioCategorias!=='undefined'?diarioCategorias:[];
   const sel=document.getElementById('diarioTipo');
   if(!sel) return;
-  sel.innerHTML=diarioCategorias.map(c=>`<option value="${c.id}">${c.emoji} ${c.nombre}</option>`).join('');
+  sel.innerHTML=cats.map(c=>`<option value="${c.id}">${c.emoji} ${c.nombre}</option>`).join('');
   sel.value=catId;
   document.getElementById('diarioDate').value=new Date().toISOString().slice(0,10);
   document.getElementById('diarioDesc').value='';
   document.getElementById('diarioAmount').value='';
-  document.getElementById('diarioModalTitle').textContent='Registrar gasto';
-  document.getElementById('diarioModalSub').textContent='Ingresá el detalle del gasto';
-  document.getElementById('diarioSaveBtn').textContent='Guardar';
+  if(document.getElementById('diarioModalTitle')) document.getElementById('diarioModalTitle').textContent='Registrar gasto';
+  if(document.getElementById('diarioModalSub')) document.getElementById('diarioModalSub').textContent='Ingresá el detalle del gasto';
+  if(document.getElementById('diarioSaveBtn')) document.getElementById('diarioSaveBtn').textContent='Guardar';
   document.getElementById('diarioModalOverlay').classList.add('open');
 }
 initGoogleAuth();
