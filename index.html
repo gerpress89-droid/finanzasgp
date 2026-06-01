@@ -645,19 +645,15 @@ body{display:flex;}
   .app-main{margin-left:0!important;}
   .mobile-menu-btn{display:flex;align-items:center;}
   .fab-container{bottom:18px;right:16px;}
-  /* Ocultar tabs duplicados — el sidebar los reemplaza */
   .sticky-tabs{display:none!important;}
-  /* Mover sticky-nav-top para no chocar con el botón hamburguesa */
   .sticky-nav-top{padding-left:52px;}
 }
 </style>
 
 </head>
 <body>
-
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeMobileSidebar()"></div>
 <button class="mobile-menu-btn" onclick="toggleMobileSidebar()">☰</button>
-
 <div class="sidebar" id="sidebar">
   <div class="sidebar-logo">
     <span class="sidebar-logo-icon">💰</span>
@@ -665,23 +661,19 @@ body{display:flex;}
   </div>
   <nav class="sidebar-nav">
     <div class="sidebar-nav-item active" id="snav-gastos" onclick="switchTab('gastos')">
-      <span class="sni-icon">📊</span>
-      <span class="sni-label">Gastos &amp; Ingresos</span>
+      <span class="sni-icon">📊</span><span class="sni-label">Gastos &amp; Ingresos</span>
       <span class="sidebar-tooltip">Gastos &amp; Ingresos</span>
     </div>
     <div class="sidebar-nav-item" id="snav-diario" onclick="switchTab('diario')">
-      <span class="sni-icon">📝</span>
-      <span class="sni-label">Registro Diario</span>
+      <span class="sni-icon">📝</span><span class="sni-label">Registro Diario</span>
       <span class="sidebar-tooltip">Registro Diario</span>
     </div>
     <div class="sidebar-nav-item" id="snav-objetivos" onclick="switchTab('objetivos')">
-      <span class="sni-icon">🎯</span>
-      <span class="sni-label">Objetivos de Ahorro</span>
+      <span class="sni-icon">🎯</span><span class="sni-label">Objetivos de Ahorro</span>
       <span class="sidebar-tooltip">Objetivos de Ahorro</span>
     </div>
     <div class="sidebar-nav-item" id="snav-anual" onclick="switchTab('anual')">
-      <span class="sni-icon">📈</span>
-      <span class="sni-label">Comparativo Anual</span>
+      <span class="sni-icon">📈</span><span class="sni-label">Comparativo Anual</span>
       <span class="sidebar-tooltip">Comparativo Anual</span>
     </div>
   </nav>
@@ -692,12 +684,10 @@ body{display:flex;}
     </div>
   </div>
 </div>
-
 <div class="fab-container">
   <div class="fab-menu" id="fabMenu"></div>
   <button class="fab-btn" id="fabBtn" onclick="toggleFab()">+</button>
 </div>
-
 <div class="app-main" id="appMain">
 <div class="wrapper">
 
@@ -1504,7 +1494,7 @@ function switchTab(t) {
   const tabs = ['gastos','diario','objetivos','anual'];
   document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', tabs[i]===t));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id==='tab-'+t));
-  tabs.forEach(tab => { const el = document.getElementById('snav-'+tab); if(el) el.classList.toggle('active', tab===t); });
+  ['gastos','diario','objetivos','anual'].forEach(tab=>{const el=document.getElementById('snav-'+tab);if(el)el.classList.toggle('active',tab===t);});
   closeMobileSidebar();
   // Mostrar/ocultar selector de meses sticky solo en la pestaña Gastos
   const smn = document.getElementById('stickyMonthNav');
@@ -1877,20 +1867,11 @@ function syncDiarioToMonth(mes) {
   });
 }
 
-function deleteDiario(date,tipo,amount,displayIdx) {
-  if(!gastosDiarios[date]) return;
-  const mes=getMonthFromDate(date);
-  const entries=Object.entries(gastosDiarios)
-    .filter(([d])=>getMonthFromDate(d)===mes)
-    .flatMap(([d,arr])=>arr.map(e=>({...e,date:d})))
-    .filter(e=>e.tipo===tipo)
-    .sort((a,b)=>b.date.localeCompare(a.date));
-  const target=entries[displayIdx];
-  if(!target) return;
-  const arr=gastosDiarios[target.date];
-  const i=arr.findIndex(e=>e.tipo===target.tipo&&Math.abs(e.amount-target.amount)<0.01&&e.desc===target.desc);
-  if(i>=0) arr.splice(i,1);
-  if(!arr.length) delete gastosDiarios[target.date];
+function deleteDiario(date, tipo, amount, realIdx) {
+  const arr = gastosDiarios[date];
+  if (!arr || arr[realIdx] === undefined) return;
+  arr.splice(realIdx, 1);
+  if (!arr.length) delete gastosDiarios[date];
   renderDiario();
 }
 
@@ -2352,34 +2333,30 @@ function addPeriodoRow(btn) {
 function saveObjModal(){
   const cont=document.getElementById('objEditContainer');
   const items=cont.querySelectorAll('.obj-modal-item');
-  // Snapshot OLD state before overwriting — needed to clean orphaned expenses
-  const oldSnapshot = objetivos.map(o=>({
-    nombre: o.nombre||'', emoji: o.emoji||'',
-    checks: Object.assign({},o.checks||{}),
-    mesesLabels: Object.assign({},o.mesesLabels||{})
+  const oldSnapshot=objetivos.map(o=>({
+    nombre:o.nombre||'',emoji:o.emoji||'',
+    checks:Object.assign({},o.checks||{}),
+    mesesLabels:Object.assign({},o.mesesLabels||{})
   }));
   objetivos=[...items].map((item,itemIdx)=>{
-    const meses={};
-    const mesesLabels={};
-    const newKeys=[];
-    const keyCount = {};
+    const meses={},mesesLabels={},newKeys=[],keyCount={};
     item.querySelectorAll('.periodo-row').forEach(row=>{
-      const mes = row.querySelector('.periodo-mes').value;
-      const yr  = row.querySelector('.periodo-yr').value;
-      const amt = parseFloat(row.querySelector('.periodo-amt').value);
-      const lbl = row.querySelector('.periodo-label').value.trim();
+      const mes=row.querySelector('.periodo-mes').value;
+      const yr=row.querySelector('.periodo-yr').value;
+      const amt=parseFloat(row.querySelector('.periodo-amt').value);
+      const lbl=row.querySelector('.periodo-label').value.trim();
       if(isNaN(amt)||amt<=0) return;
-      const baseKey = yr+'-'+mes;
-      keyCount[baseKey] = (keyCount[baseKey]||0) + 1;
-      const key = keyCount[baseKey]===1 ? baseKey : baseKey+'-'+keyCount[baseKey];
-      meses[key] = amt;
-      if(lbl) mesesLabels[key] = lbl;
+      const baseKey=yr+'-'+mes;
+      keyCount[baseKey]=(keyCount[baseKey]||0)+1;
+      const key=keyCount[baseKey]===1?baseKey:baseKey+'-'+keyCount[baseKey];
+      meses[key]=amt;
+      if(lbl) mesesLabels[key]=lbl;
       newKeys.push(key);
     });
-    const oldObj = oldSnapshot[itemIdx] || {};
-    const oldChecks = oldObj.checks || {};
-    const checks = {};
-    newKeys.forEach(k => { if(oldChecks[k]===true) checks[k]=true; });
+    const oldObj=oldSnapshot[itemIdx]||{};
+    const oldChecks=oldObj.checks||{};
+    const checks={};
+    newKeys.forEach(k=>{if(oldChecks[k]===true) checks[k]=true;});
     const subgoals=[...item.querySelectorAll('.obj-sub-fields .field-row')].map(row=>{
       const ins=row.querySelectorAll('input');
       const label=ins[0].value.trim();
@@ -2391,13 +2368,13 @@ function saveObjModal(){
       emoji:item.querySelector('.obj-emoji').value.trim()||'🎯',
       meta:parseFloat(item.querySelector('.obj-meta').value)||0,
       color:OBJ_COLORS[itemIdx%OBJ_COLORS.length],
-      meses, mesesLabels, checks, subgoals
+      meses,mesesLabels,checks,subgoals
     };
   }).filter(o=>o.nombre);
   closeObjModal();
   resyncAllObjToGastos();
   renderObjetivos();
-  renderMonthNav(); renderKPIs(); renderControlGrid(); renderCharts();
+  renderMonthNav();renderKPIs();renderControlGrid();renderCharts();
 }
 
 // ── Objetivos render ──────────────────────────────────────────────────────────
@@ -2497,47 +2474,41 @@ function renderObjetivos(){
   renderObjChart();
 }
 
-function toggleObjPeriod(oi, key){
+function toggleObjPeriod(oi,key){
   const obj=objetivos[oi];
   if(!obj.checks) obj.checks={};
-  obj.checks[key] = obj.checks[key]!==true;
+  obj.checks[key]=obj.checks[key]!==true;
   resyncAllObjToGastos();
   renderObjetivos();
-  renderMonthNav(); renderKPIs(); renderControlGrid(); renderCharts();
+  renderMonthNav();renderKPIs();renderControlGrid();renderCharts();
 }
 
 function resyncAllObjToGastos(){
-  // Step 1: build set of ALL possible expense labels across all objectives
-  const allLabels = new Set();
+  const allLabels=new Set();
   objetivos.forEach(obj=>{
     Object.keys(obj.meses||{}).forEach(k=>{
       const cl=(obj.mesesLabels&&obj.mesesLabels[k])?obj.mesesLabels[k]:'';
       allLabels.add(obj.emoji+' '+obj.nombre+(cl?' — '+cl:''));
     });
   });
-  // Step 2: remove every matching label from all 12 months
   for(let mi=0;mi<=11;mi++){
     if(!allData[mi]) continue;
     allData[mi].expenses=allData[mi].expenses.filter(e=>!allLabels.has(e.label));
     const m=allData[mi];
     if(!m.clients.length&&!m.salary.length&&!m.expenses.length) delete allData[mi];
   }
-  // Step 3: re-add only checked periods
   objetivos.forEach(obj=>{
     if(!obj.checks) return;
     Object.keys(obj.checks).forEach(k=>{
-      if(obj.checks[k]!==true) return;
-      if(!obj.meses||!obj.meses[k]) return;
+      if(obj.checks[k]!==true||!obj.meses||!obj.meses[k]) return;
       const cl=(obj.mesesLabels&&obj.mesesLabels[k])?obj.mesesLabels[k]:'';
       const expLabel=obj.emoji+' '+obj.nombre+(cl?' — '+cl:'');
       const amount=obj.meses[k];
       let monthIdx=null;
-      if(String(k).includes('-')){
-        const parts=k.split('-');
-        if(parseInt(parts[0])===dashboardYear) monthIdx=parseInt(parts[1])-1;
-      } else if(k==='5b'){ monthIdx=5;
-      } else if(k==='12b'){ monthIdx=11;
-      } else { const mi=parseInt(k); if(!isNaN(mi)&&mi>=0&&mi<=11) monthIdx=mi; }
+      if(String(k).includes('-')){const p=k.split('-');if(parseInt(p[0])===dashboardYear) monthIdx=parseInt(p[1])-1;}
+      else if(k==='5b') monthIdx=5;
+      else if(k==='12b') monthIdx=11;
+      else{const mi=parseInt(k);if(!isNaN(mi)&&mi>=0&&mi<=11) monthIdx=mi;}
       if(monthIdx===null) return;
       if(!allData[monthIdx]) allData[monthIdx]={clients:[],salary:[],expenses:[]};
       const exp=allData[monthIdx].expenses;
@@ -2547,7 +2518,6 @@ function resyncAllObjToGastos(){
     });
   });
 }
-
 function syncObjPeriodToGastos(obj, key, isChecked){
   // Map key → monthIdx within allData (0=Jan..11=Dec of dashboardYear)
   let monthIdx = null;
@@ -2886,24 +2856,16 @@ function renderAll(){
 setInterval(saveToSheet, 30000);
 setInterval(saveToSheet, 60000);
 
-// ── Sidebar ────────────────────────────────────────────────────────────────
 function toggleSidebar(){
-  const sb=document.getElementById('sidebar');
-  const main=document.getElementById('appMain');
+  const sb=document.getElementById('sidebar'),main=document.getElementById('appMain');
   const c=sb.classList.toggle('collapsed');
   if(main) main.classList.toggle('sidebar-collapsed',c);
   localStorage.setItem('sb_collapsed',c?'1':'0');
 }
 function toggleMobileSidebar(){
-  const sb=document.getElementById('sidebar');
-  const ov=document.getElementById('sidebarOverlay');
-  if(sb.classList.contains('mobile-open')){
-    sb.classList.remove('mobile-open');
-    ov.classList.remove('open');
-  } else {
-    sb.classList.add('mobile-open');
-    ov.classList.add('open');
-  }
+  const sb=document.getElementById('sidebar'),ov=document.getElementById('sidebarOverlay');
+  if(sb.classList.contains('mobile-open')){sb.classList.remove('mobile-open');ov.classList.remove('open');}
+  else{sb.classList.add('mobile-open');ov.classList.add('open');}
 }
 function closeMobileSidebar(){
   document.getElementById('sidebar').classList.remove('mobile-open');
@@ -2911,14 +2873,11 @@ function closeMobileSidebar(){
 }
 (function(){
   if(localStorage.getItem('sb_collapsed')==='1'){
-    const sb=document.getElementById('sidebar');
-    const main=document.getElementById('appMain');
+    const sb=document.getElementById('sidebar'),main=document.getElementById('appMain');
     if(sb) sb.classList.add('collapsed');
     if(main) main.classList.add('sidebar-collapsed');
   }
 })();
-
-// ── FAB gasto rápido ───────────────────────────────────────────────────────
 let _fabOpen=false;
 function toggleFab(){
   _fabOpen=!_fabOpen;
@@ -2932,16 +2891,10 @@ function buildFabMenu(){
   const menu=document.getElementById('fabMenu');
   if(!menu) return;
   const cats=typeof diarioCategorias!=='undefined'?diarioCategorias:[];
-  if(!cats.length){ menu.innerHTML='<div style="color:var(--muted);font-size:12px;padding:8px 14px;">Sin categorías</div>'; return; }
-  menu.innerHTML=cats.map(cat=>`
-    <button class="fab-cat-btn" onclick="fabQuickAdd('${cat.id}')">
-      <span class="fab-cat-dot" style="background:${cat.color}"></span>
-      ${cat.emoji} ${cat.nombre}
-    </button>`).join('');
+  menu.innerHTML=cats.map(cat=>`<button class="fab-cat-btn" onclick="fabQuickAdd('${cat.id}')"><span class="fab-cat-dot" style="background:${cat.color}"></span>${cat.emoji} ${cat.nombre}</button>`).join('');
 }
 function fabQuickAdd(catId){
   if(_fabOpen) toggleFab();
-  if(typeof openDiarioModal==='function'){ openDiarioModal(); }
   _editingDiario=null;
   const cats=typeof diarioCategorias!=='undefined'?diarioCategorias:[];
   const sel=document.getElementById('diarioTipo');
