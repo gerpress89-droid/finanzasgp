@@ -2316,8 +2316,9 @@ function addPeriodoRow(btn) {
 
 function saveObjModal(){
   const cont=document.getElementById('objEditContainer');
-  const singleIdx=cont.dataset.singleIdx!==undefined?parseInt(cont.dataset.singleIdx):null;
-  delete cont.dataset.singleIdx;
+  const _sidxAttr=cont.getAttribute('data-single-idx');
+  const singleIdx=(_sidxAttr!==null&&_sidxAttr!=='')?parseInt(_sidxAttr):null;
+  cont.removeAttribute('data-single-idx');
   const items=cont.querySelectorAll('.obj-modal-item');
   const oldSnapshot=objetivos.map(o=>({
     nombre:o.nombre||'',emoji:o.emoji||'',
@@ -2848,7 +2849,7 @@ function resyncAllObjToGastos(){
 function openObjModalSingle(oi){
   const cont=document.getElementById('objEditContainer');
   cont.innerHTML='';
-  cont.dataset.singleIdx=oi;
+  cont.setAttribute('data-single-idx', String(oi));
   buildObjItem(cont,objetivos[oi],oi);
   document.getElementById('objModalOverlay').classList.add('open');
 }
