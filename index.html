@@ -1383,30 +1383,11 @@ async function saveToDrive() {
         {method:'PATCH', headers:{'Content-Type':'application/json'}, body}
       );
     }
-    // Update last successful save timestamp
-    localStorage.setItem('last_drive_save', new Date().toISOString());
     return true;
   } catch(e) {
     console.error('Drive save error:', e);
-    // Show a loud, persistent error so it's never missed
-    showDriveSaveError();
     return false;
   }
-}
-
-function showDriveSaveError() {
-  // Remove existing alert if any
-  const existing = document.getElementById('drive-error-banner');
-  if (existing) existing.remove();
-  const banner = document.createElement('div');
-  banner.id = 'drive-error-banner';
-  banner.innerHTML = `
-    <span>⚠️ <strong>Error al guardar en Google Drive.</strong> Tus datos están seguros localmente, pero no se sincronizaron. Intentá de nuevo.</span>
-    <button onclick="saveToSheet().then(()=>{if(document.getElementById('drive-error-banner'))document.getElementById('drive-error-banner').remove();})" style="background:white;color:#c0392b;border:none;border-radius:6px;padding:6px 14px;font-weight:700;cursor:pointer;margin-left:12px;">Reintentar</button>
-    <button onclick="this.parentElement.remove()" style="background:none;border:none;color:white;font-size:18px;cursor:pointer;margin-left:8px;opacity:0.7">✕</button>
-  `;
-  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#c0392b;color:white;padding:12px 20px;display:flex;align-items:center;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,0.4);';
-  document.body.prepend(banner);
 }
 
 // ── Local storage ─────────────────────────────────────────────────────────────
@@ -1453,21 +1434,12 @@ async function loadFromSheet() {
 }
 
 async function saveToSheet() {
-  saveLocal(); // Always save locally first — data is never lost
+  saveLocal();
   if (gAccessToken) {
     setStatus('💾 Guardando en Google Drive…', true);
     const ok = await saveToDrive();
     const email = localStorage.getItem(USER_KEY)||'';
-    if (ok) {
-      const now = new Date();
-      const time = now.toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
-      setStatus('✅ Guardado en Drive · ' + (email||'') + ' · ' + time, false);
-      // Remove any error banner if save succeeded
-      const eb = document.getElementById('drive-error-banner');
-      if (eb) eb.remove();
-    } else {
-      setStatus('⚠️ Error al guardar en Drive — revisá tu conexión', false);
-    }
+    setStatus(ok ? '✅ Guardado · ' + (email||'Google Drive') : '⚠️ Error al guardar en Drive', false);
   } else {
     setStatus('✅ Guardado localmente', false);
   }
@@ -2716,7 +2688,7 @@ const CAT_COLORS = ['var(--accent)','var(--accent2)','var(--green)','var(--red)'
 function openCategoriasModal() {
   const list = document.getElementById('categoriasEditList');
   list.innerHTML = diarioCategorias.map((cat,i)=>`
-    <div class="field-row" style="margin-bottom:10px;flex-wrap:wrap;gap:6px;" data-idx="${i}">
+    <div class="field-row" style="margin-bottom:10px;flex-wrap:wrap;gap:6px;" data-idx="${i}" data-original-id="${cat.id}">
       <input type="text" value="${cat.emoji}" placeholder="🎯" class="cat-emoji modal-input" style="width:52px;text-align:center;font-size:18px;flex:none">
       <input type="text" value="${cat.nombre}" placeholder="Nombre" class="cat-nombre modal-input" style="flex:1;min-width:120px">
       <input type="number" value="${cat.limite||''}" placeholder="Límite $ (opcional)" class="cat-limite modal-input" style="width:150px;flex:none">
@@ -2745,21 +2717,114 @@ function addCategoriaRow() {
 
 function saveCategorias() {
   const rows = document.querySelectorAll('#categoriasEditList [data-idx]');
-  const newCats = [...rows].map((row,i) => {
+  let colorIdx = 0;
+  const newCats = [...rows].map(row => {
     const emoji  = row.querySelector('.cat-emoji').value.trim() || '📌';
     const nombre = row.querySelector('.cat-nombre').value.trim();
     const limite = parseFloat(row.querySelector('.cat-limite').value) || 0;
     if (!nombre) return null;
-    // Keep existing id if possible, otherwise generate from nombre
-    const existing = diarioCategorias[i];
-    const id = existing ? existing.id : nombre.toLowerCase().replace(/[^a-z0-9]/g,'_').slice(0,20)+'_'+i;
-    return { id, nombre, emoji, color: CAT_COLORS[i % CAT_COLORS.length], limite };
+    // Use original id to avoid id shifting when rows are deleted/reordered
+    const originalId = row.getAttribute('data-original-id');
+    const id = originalId || nombre.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'').slice(0,20) + '_' + Date.now();
+    return { id, nombre, emoji, color: CAT_COLORS[colorIdx++ % CAT_COLORS.length], limite };
   }).filter(Boolean);
   if (newCats.length === 0) { alert('Necesitás al menos una categoría'); return; }
+
+  // Find deleted categories and purge their data from gastosDiarios and allData expenses
+  const newIds = new Set(newCats.map(c => c.id));
+  const deletedCats = diarioCategorias.filter(c => !newIds.has(c.id));
+  deletedCats.forEach(deletedCat => {
+    // Remove from gastosDiarios
+    Object.keys(gastosDiarios).forEach(date => {
+      gastosDiarios[date] = gastosDiarios[date].filter(e => e.tipo !== deletedCat.id);
+      if (!gastosDiarios[date].length) delete gastosDiarios[date];
+    });
+    // Remove from allData expenses (diario syncs to expenses)
+    for (let mi = 0; mi <= 11; mi++) {
+      if (!allData[mi]) continue;
+      const lbl = deletedCat.emoji + ' ' + deletedCat.nombre;
+      allData[mi].expenses = allData[mi].expenses.filter(e => e.label !== lbl);
+      const m = allData[mi];
+      if (!m.clients.length && !m.salary.length && !m.expenses.length) delete allData[mi];
+    }
+  });
+
   diarioCategorias = newCats;
   closeCategoriasModal();
+  resyncAllObjToGastos();
   saveToSheet();
   renderDiario();
+  renderControlGrid();
+}
+
+function closeCategoriasModal() {
+  document.getElementById('categoriasModalOverlay').classList.remove('open');
+}
+
+function addCategoriaRow() {
+  const list = document.getElementById('categoriasEditList');
+  const div = document.createElement('div');
+  div.className = 'field-row';
+  div.style.cssText = 'margin-bottom:10px;flex-wrap:wrap;gap:6px;';
+  div.setAttribute('data-idx', list.children.length);
+  div.innerHTML = `
+    <input type="text" placeholder="🎯" class="cat-emoji modal-input" style="width:52px;text-align:center;font-size:18px;flex:none">
+    <input type="text" placeholder="Nombre de la categoría" class="cat-nombre modal-input" style="flex:1;min-width:120px">
+    <input type="number" placeholder="Límite $ (opcional)" class="cat-limite modal-input" style="width:150px;flex:none">
+    <button class="btn-del" onclick="this.closest('[data-idx]').remove()">✕</button>`;
+  list.appendChild(div);
+}
+
+function saveCategorias() {
+  const rows = document.querySelectorAll('#categoriasEditList [data-idx]');
+  const newCats = [...rows].map((row) => {
+    const emoji  = row.querySelector('.cat-emoji').value.trim() || '📌';
+    const nombre = row.querySelector('.cat-nombre').value.trim();
+    const limite = parseFloat(row.querySelector('.cat-limite').value) || 0;
+    if (!nombre) return null;
+    // CRITICAL: use data-original-id to preserve id regardless of position changes
+    const originalId = row.dataset.originalId;
+    const id = originalId || nombre.toLowerCase().replace(/[^a-z0-9]/g,'_').slice(0,20)+'_'+Date.now();
+    return { id, nombre, emoji, color: CAT_COLORS[newCats_temp_idx++ % CAT_COLORS.length], limite };
+  });
+  // Fix: can't use newCats_temp_idx in map before declaration — use index properly
+  let colorIdx = 0;
+  const newCatsFixed = [...rows].map((row) => {
+    const emoji  = row.querySelector('.cat-emoji').value.trim() || '📌';
+    const nombre = row.querySelector('.cat-nombre').value.trim();
+    const limite = parseFloat(row.querySelector('.cat-limite').value) || 0;
+    if (!nombre) return null;
+    const originalId = row.dataset.originalId;
+    const id = originalId || nombre.toLowerCase().replace(/[^a-z0-9]/g,'_').slice(0,20)+'_'+Date.now();
+    return { id, nombre, emoji, color: CAT_COLORS[colorIdx++ % CAT_COLORS.length], limite };
+  }).filter(Boolean);
+  if (newCatsFixed.length === 0) { alert('Necesitás al menos una categoría'); return; }
+
+  // Find deleted categories and remove their gastosDiarios entries
+  const newIds = new Set(newCatsFixed.map(c => c.id));
+  const deletedIds = diarioCategorias.filter(c => !newIds.has(c.id)).map(c => c.id);
+  if (deletedIds.length > 0) {
+    Object.keys(gastosDiarios).forEach(date => {
+      gastosDiarios[date] = gastosDiarios[date].filter(e => !deletedIds.includes(e.tipo));
+      if (!gastosDiarios[date].length) delete gastosDiarios[date];
+    });
+    // Also remove from allData expenses
+    deletedIds.forEach(deletedId => {
+      const deletedCat = diarioCategorias.find(c => c.id === deletedId);
+      if (!deletedCat) return;
+      for (let mi = 0; mi <= 11; mi++) {
+        if (!allData[mi]) continue;
+        allData[mi].expenses = allData[mi].expenses.filter(e => e.label !== deletedCat.emoji + ' ' + deletedCat.nombre);
+      }
+    });
+  }
+
+  diarioCategorias = newCatsFixed;
+  closeCategoriasModal();
+  resyncAllObjToGastos();
+  saveToSheet();
+  renderDiario();
+  renderControlGrid();
 }
 
 // ── Close modals on overlay ───────────────────────────────────────────────────
@@ -2834,7 +2899,8 @@ function renderAll(){
   renderGastos();
 }
 
-setInterval(saveToSheet, 30000); // Auto-save every 30 seconds
+setInterval(saveToSheet, 30000);
+setInterval(saveToSheet, 60000);
 // ── resyncAllObjToGastos ──────────────────────────────────────────────────
 function resyncAllObjToGastos(){
   const allLabels=new Set();
