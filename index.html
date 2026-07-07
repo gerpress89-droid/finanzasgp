@@ -1033,11 +1033,12 @@ let currentMonth = 3;
 let charts = {};
 
 // ── Persistence ───────────────────────────────────────────────────────────────
-function setStatus(msg, loading) {
+function setStatus(msg, loading, isError=false) {
   document.getElementById('statusText').textContent = msg;
-  document.getElementById('statusDot').style.background = loading ? 'var(--accent)' : 'var(--green)';
-  if(loading) document.getElementById('statusDot').classList.add('loading');
-  else document.getElementById('statusDot').classList.remove('loading');
+  const dot = document.getElementById('statusDot');
+  dot.style.background = loading ? 'var(--accent)' : (isError ? '#e5484d' : 'var(--green)');
+  if(loading) dot.classList.add('loading');
+  else dot.classList.remove('loading');
 }
 
 // ── Google Auth (PKCE via Cloudflare Worker) ──────────────────────────────────
@@ -1294,11 +1295,20 @@ function showLockedScreen(email) {
 }
 
 // ── Drive operations ──────────────────────────────────────────────────────────
-async function authFetch(url, opts={}) {
+async function authFetch(url, opts={}, _retried=false) {
   opts.headers = {...(opts.headers||{}), Authorization:'Bearer '+gAccessToken};
   const res = await fetch(url, opts);
   if (res.status === 401) {
-    // Token expired
+    // Token expired: intentar refrescarlo con el refresh_token guardado
+    // ANTES de tirar la toalla. Esto evita perder la sesión (y el guardado)
+    // solo porque el access token venció mientras el celular estaba en
+    // segundo plano.
+    if (!_retried) {
+      const ok = await refreshAccessToken();
+      if (ok) return authFetch(url, opts, true);
+    }
+    // El refresh también falló (o ya lo habíamos intentado): recién ahí
+    // se da por perdida la sesión.
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(TOKEN_EXP);
     gAccessToken = null;
@@ -1316,6 +1326,12 @@ async function getDriveFileId() {
   const res = await authFetch(
     `https://www.googleapis.com/drive/v3/files?q=name='${GDRIVE_FILE_NAME}'&spaces=appDataFolder&fields=files(id,name)`
   );
+  if (!res.ok) {
+    // Real API error (timeout, 5xx, rate limit, etc) - NOT the same as "no existe todavia".
+    // Throwing here forces loadFromDrive's catch block to fall back to local data
+    // instead of silently treating this as a brand-new user with no data.
+    throw new Error('drive_search_failed_' + res.status);
+  }
   const data = await res.json();
   if (data.files && data.files.length > 0) {
     gFileId = data.files[0].id;
@@ -1354,7 +1370,7 @@ async function loadFromDrive() {
     renderAll();
   } catch(e) {
     if (e.message !== '401') {
-      setStatus('⚠️ Error de conexión — usando datos locales', false);
+      setStatus('🔴 No se pudo conectar a Drive — usando datos locales (revisá tu conexión)', false, true);
       loadLocalData(false);
     }
   }
@@ -1392,7 +1408,12 @@ async function saveToDrive() {
 
 // ── Local storage ─────────────────────────────────────────────────────────────
 function applyData(p) {
-  if (p.allData) allData = Object.fromEntries(Object.entries(p.allData).map(([k,v])=>[parseInt(k),v]));
+  if (p.allData) {
+    allData = {};
+    Object.entries(p.allData).forEach(([k,v]) => {
+      allData[k === '_year' ? '_year' : parseInt(k)] = v;
+    });
+  }
   if (p.objetivos) objetivos = p.objetivos;
   if (p.gastosDiarios) gastosDiarios = p.gastosDiarios;
   if (p.historicalData) historicalData = p.historicalData;
@@ -1402,10 +1423,74 @@ function applyData(p) {
 
 function saveLocal() {
   allData._year = dashboardYear;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+  const payload = JSON.stringify({
     allData, objetivos, gastosDiarios, historicalData, sectionTitles, diarioCategorias
-  }));
+  });
+  localStorage.setItem(STORAGE_KEY, payload);
+  saveBackupSnapshot(payload);
 }
+
+// ── Backup rotativo diario ─────────────────────────────────────────────────
+// Guarda una copia con fecha cada día (finanzas_gp_v3_backup_YYYY-MM-DD) y
+// borra las de más de 7 días. Es una red de seguridad independiente de Drive:
+// si algo vuelve a fallar, siempre queda una foto de los últimos días para
+// recuperar manualmente, aunque el localStorage "en vivo" se corrompa o vacíe.
+function saveBackupSnapshot(payload) {
+  try {
+    const today = new Date().toISOString().slice(0,10); // YYYY-MM-DD
+    const backupKey = STORAGE_KEY + '_backup_' + today;
+    localStorage.setItem(backupKey, payload);
+
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 7);
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf(STORAGE_KEY + '_backup_') === 0) {
+        const dateStr = k.slice((STORAGE_KEY + '_backup_').length);
+        const d = new Date(dateStr + 'T00:00:00');
+        if (!isNaN(d) && d < cutoff) keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+  } catch(e) {
+    // Si falla el backup (ej. almacenamiento lleno), no debe frenar el
+    // guardado principal - solo se registra en consola.
+    console.warn('No se pudo guardar el backup rotativo:', e);
+  }
+}
+
+// Helpers para recuperar backups a mano desde la consola del navegador:
+//   listBackups()              -> muestra las fechas disponibles
+//   restoreBackup('2026-07-05') -> aplica esa copia y la deja lista para guardar
+window.listBackups = function() {
+  const found = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.indexOf(STORAGE_KEY + '_backup_') === 0) {
+      const dateStr = k.slice((STORAGE_KEY + '_backup_').length);
+      const size = (localStorage.getItem(k) || '').length;
+      found.push({fecha: dateStr, bytes: size});
+    }
+  }
+  found.sort((a,b) => a.fecha.localeCompare(b.fecha));
+  console.table(found);
+  return found;
+};
+
+window.restoreBackup = function(dateStr) {
+  const backupKey = STORAGE_KEY + '_backup_' + dateStr;
+  const raw = localStorage.getItem(backupKey);
+  if (!raw) {
+    console.error('No existe backup para la fecha', dateStr, '- corré listBackups() para ver las disponibles.');
+    return false;
+  }
+  applyData(JSON.parse(raw));
+  renderAll();
+  setStatus('✅ Backup del ' + dateStr + ' restaurado — revisá los datos y guardá si está bien', false);
+  console.log('Backup restaurado. Si está todo bien, hacé click en "Guardar" para subirlo a Drive.');
+  return true;
+};
 
 function loadLocalData(doRender=true) {
   try {
@@ -1439,7 +1524,7 @@ async function saveToSheet() {
     setStatus('💾 Guardando en Google Drive…', true);
     const ok = await saveToDrive();
     const email = localStorage.getItem(USER_KEY)||'';
-    setStatus(ok ? '✅ Guardado · ' + (email||'Google Drive') : '⚠️ Error al guardar en Drive', false);
+    setStatus(ok ? '✅ Guardado · ' + (email||'Google Drive') : '🔴 Error al guardar en Drive — reintentará solo', false, !ok);
   } else {
     setStatus('✅ Guardado localmente', false);
   }
@@ -2900,7 +2985,6 @@ function renderAll(){
 }
 
 setInterval(saveToSheet, 30000);
-setInterval(saveToSheet, 60000);
 // ── resyncAllObjToGastos ──────────────────────────────────────────────────
 function resyncAllObjToGastos(){
   const allLabels=new Set();
