@@ -1349,7 +1349,25 @@ async function loadFromDrive() {
       );
       if (res.ok) {
         const p = await res.json();
+        if (!payloadHasRealData(p) && storedHasRealData()) {
+          // Drive está vacío pero este dispositivo tiene datos reales: gana lo local,
+          // y se sube a Drive para repararlo.
+          console.warn('Drive vacío con datos locales reales: se restaura Drive desde local.');
+          loadLocalData(false);
+          dataLoaded = true;
+          allData._year = allData._year || CURRENT_YEAR;
+          renderAll();
+          setStatus('🟡 Drive estaba vacío — restaurando desde este dispositivo…', true);
+          await saveToSheet();
+          return;
+        }
+        // Foto de seguridad de lo local antes de reemplazarlo con lo de Drive
+        try {
+          const prev = localStorage.getItem(STORAGE_KEY);
+          if (prev && storedHasRealData()) localStorage.setItem(STORAGE_KEY + '_prev_sync', prev);
+        } catch(e) {}
         applyData(p);
+        dataLoaded = true;
         // Update localStorage cache
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
           allData, objetivos, gastosDiarios, historicalData, sectionTitles, diarioCategorias
@@ -1362,7 +1380,17 @@ async function loadFromDrive() {
         return;
       }
     }
-    // New user or empty Drive file
+    // No hay archivo en Drive (o no se pudo leer). Si hay datos locales, usarlos.
+    if (storedHasRealData()) {
+      loadLocalData(false);
+      dataLoaded = true;
+      allData._year = allData._year || CURRENT_YEAR;
+      renderAll();
+      setStatus('🟡 Sin archivo en Drive — se subirán los datos de este dispositivo', true);
+      await saveToSheet();
+      return;
+    }
+    dataLoaded = true;
     const email = localStorage.getItem(USER_KEY)||'';
     setStatus('✅ ' + (email||'Conectado') + ' — primera vez, empezá a cargar datos', false);
     allData._year = allData._year || CURRENT_YEAR;
@@ -1372,12 +1400,16 @@ async function loadFromDrive() {
     if (e.message !== '401') {
       setStatus('🔴 No se pudo conectar a Drive — usando datos locales (revisá tu conexión)', false, true);
       loadLocalData(false);
+      if (storedHasRealData()) dataLoaded = true;
+      allData._year = allData._year || CURRENT_YEAR;
+      renderAll();
     }
   }
 }
 
 async function saveToDrive() {
   if (!gAccessToken) return false;
+  if (!dataLoaded || (!memoryHasRealData() && storedHasRealData())) return false;
   const body = JSON.stringify({allData, objetivos, gastosDiarios, historicalData, sectionTitles, diarioCategorias});
   try {
     let fileId = await getDriveFileId();
@@ -1406,6 +1438,34 @@ async function saveToDrive() {
   }
 }
 
+// ── Protección contra guardados vacíos ────────────────────────────────────────
+// dataLoaded = la app ya cargó (de Drive o de local) el estado real de la persona.
+// Hasta que eso no pase, NO se guarda nada: antes, si la carga tardaba o fallaba,
+// el autoguardado de 30s escribía el estado vacío en memoria sobre los datos reales.
+let dataLoaded = false;
+
+function payloadHasRealData(p) {
+  if (!p) return false;
+  const ad = p.allData || {};
+  for (let i = 0; i < 12; i++) {
+    const m = ad[i] || ad[String(i)];
+    if (m && ((m.clients||[]).length || (m.salary||[]).length || (m.expenses||[]).length)) return true;
+  }
+  if (p.gastosDiarios && Object.keys(p.gastosDiarios).length) return true;
+  if (p.objetivos && p.objetivos.length) return true;
+  if (p.historicalData && Object.keys(p.historicalData).length) return true;
+  return false;
+}
+
+function memoryHasRealData() {
+  return payloadHasRealData({allData, objetivos, gastosDiarios, historicalData});
+}
+
+function storedHasRealData() {
+  try { return payloadHasRealData(JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')); }
+  catch(e) { return false; }
+}
+
 // ── Local storage ─────────────────────────────────────────────────────────────
 function applyData(p) {
   if (p.allData) {
@@ -1422,12 +1482,18 @@ function applyData(p) {
 }
 
 function saveLocal() {
+  if (!dataLoaded) return false;
+  if (!memoryHasRealData() && storedHasRealData()) {
+    console.warn('saveLocal bloqueado: el estado en memoria está vacío y el almacenamiento local tiene datos reales.');
+    return false;
+  }
   allData._year = dashboardYear;
   const payload = JSON.stringify({
     allData, objetivos, gastosDiarios, historicalData, sectionTitles, diarioCategorias
   });
   localStorage.setItem(STORAGE_KEY, payload);
   saveBackupSnapshot(payload);
+  return true;
 }
 
 // ── Backup rotativo diario ─────────────────────────────────────────────────
@@ -1437,12 +1503,13 @@ function saveLocal() {
 // recuperar manualmente, aunque el localStorage "en vivo" se corrompa o vacíe.
 function saveBackupSnapshot(payload) {
   try {
+    if (!payloadHasRealData(JSON.parse(payload))) return; // nunca pisar un backup bueno con uno vacío
     const today = new Date().toISOString().slice(0,10); // YYYY-MM-DD
     const backupKey = STORAGE_KEY + '_backup_' + today;
     localStorage.setItem(backupKey, payload);
 
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 7);
+    cutoff.setDate(cutoff.getDate() - 30);
     const keysToRemove = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
@@ -1486,6 +1553,7 @@ window.restoreBackup = function(dateStr) {
     return false;
   }
   applyData(JSON.parse(raw));
+  dataLoaded = true;
   renderAll();
   setStatus('✅ Backup del ' + dateStr + ' restaurado — revisá los datos y guardá si está bien', false);
   console.log('Backup restaurado. Si está todo bien, hacé click en "Guardar" para subirlo a Drive.');
@@ -1519,7 +1587,12 @@ async function loadFromSheet() {
 }
 
 async function saveToSheet() {
-  saveLocal();
+  if (!dataLoaded) return; // todavía no cargó los datos reales: no guardar nada
+  const savedLocal = saveLocal();
+  if (savedLocal === false) {
+    setStatus('🔴 Guardado bloqueado: datos vacíos, se protegen los datos existentes', false, true);
+    return;
+  }
   if (gAccessToken) {
     setStatus('💾 Guardando en Google Drive…', true);
     const ok = await saveToDrive();
@@ -1547,6 +1620,7 @@ function importData(event) {
   reader.onload = async e => {
     try {
       applyData(JSON.parse(e.target.result));
+      dataLoaded = true; // importar es una acción explícita de la persona
       await saveToSheet();
       allData._year = allData._year || CURRENT_YEAR;
       checkNewYear();
