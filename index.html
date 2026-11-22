@@ -223,6 +223,25 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .btn:hover{opacity:0.85;}
 .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:10px;padding:10px 20px;font-family:'DM Sans',sans-serif;font-size:var(--fs-sm);cursor:pointer;transition:all 0.2s;}
 .btn-ghost:hover{border-color:var(--text);color:var(--text);}
+.arch-note{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--muted);font-size:var(--fs-sm);margin-bottom:18px;}
+.arch-table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px;}
+.arch-table th{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);text-align:right;padding:10px 14px;border-bottom:1px solid var(--border);}
+.arch-table th:first-child,.arch-table td:first-child{text-align:left;}
+.arch-table td{padding:10px 14px;border-bottom:1px solid var(--border);text-align:right;font-size:var(--fs-sm);}
+.arch-table tr.arch-row{cursor:pointer;}
+.arch-table tr.arch-row:hover{background:var(--surface2);}
+.arch-table tr.arch-row.active{background:var(--surface2);box-shadow:inset 3px 0 0 var(--accent);}
+.arch-table tr.arch-empty td{color:var(--muted);}
+.arch-table tr.arch-total td{font-weight:700;border-bottom:none;background:var(--surface2);}
+.arch-pos{color:var(--green);} .arch-neg{color:var(--red);}
+.arch-h{font-family:'Playfair Display',serif;margin:26px 0 12px;font-size:18px;}
+@media(max-width:600px){.arch-table th,.arch-table td{padding:8px 8px;font-size:12px;}}
+.restore-sec{font-weight:600;margin:16px 0 8px;color:var(--accent);font-size:var(--fs-sm);}
+.restore-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);}
+.restore-row span:first-child{flex:1;}
+.restore-size{color:var(--muted);font-size:12px;}
+.restore-empty{color:var(--muted);font-size:13px;padding:6px 0;}
+.restore-row .btn{padding:6px 14px;font-size:12px;}
 .btn-del{background:rgba(238,138,138,0.12);border:none;color:var(--red);border-radius:6px;padding:5px 9px;font-size:var(--fs-xs);cursor:pointer;transition:background 0.2s;}
 .btn-del:hover{background:rgba(238,138,138,0.28);}
 
@@ -668,6 +687,7 @@ body{display:flex;}
     <div class="sidebar-nav-item" id="snav-diario" onclick="switchTab('diario')"><span class="sni-icon">📝</span><span class="sni-label">Registro Diario</span><span class="sidebar-tooltip">Registro Diario</span></div>
     <div class="sidebar-nav-item" id="snav-objetivos" onclick="switchTab('objetivos')"><span class="sni-icon">🎯</span><span class="sni-label">Objetivos de Ahorro</span><span class="sidebar-tooltip">Objetivos de Ahorro</span></div>
     <div class="sidebar-nav-item" id="snav-anual" onclick="switchTab('anual')"><span class="sni-icon">📈</span><span class="sni-label">Comparativo Anual</span><span class="sidebar-tooltip">Comparativo Anual</span></div>
+    <div class="sidebar-nav-item" id="snav-archivo" onclick="switchTab('archivo')"><span class="sni-icon">📚</span><span class="sni-label">Años anteriores</span><span class="sidebar-tooltip">Años anteriores</span></div>
   </nav>
   <div class="sidebar-bottom"><div class="sidebar-toggle" onclick="toggleSidebar()"><span class="sidebar-toggle-icon">◀</span><span class="sidebar-toggle-label">Colapsar</span></div></div>
 </div>
@@ -711,6 +731,7 @@ body{display:flex;}
         <button class="edit-btn primary nav-btn-main" onclick="saveToSheet()">💾 Guardar</button>
         <button class="edit-btn nav-btn-icon" onclick="exportData()" title="Backup JSON">📦</button>
         <label class="edit-btn nav-btn-icon" style="cursor:pointer;" title="Importar JSON">📂<input type="file" accept=".json" onchange="importData(event)" style="display:none"></label>
+        <button class="edit-btn nav-btn-icon" onclick="openRestoreModal()" title="Recuperar copia">🗂️</button>
         <button id="authBtn" onclick="signIn()" class="edit-btn nav-btn-auth">🔐 Entrar</button>
       </div>
     </div>
@@ -720,6 +741,7 @@ body{display:flex;}
       <button class="tab-btn" onclick="switchTab('diario')">📝 Registro Diario</button>
       <button class="tab-btn" onclick="switchTab('objetivos')">🎯 Objetivos de Ahorro</button>
       <button class="tab-btn" onclick="switchTab('anual')">📈 Comparativo Anual</button>
+      <button class="tab-btn" onclick="switchTab('archivo')">📚 Años anteriores</button>
     </div>
     <!-- Month nav (visible solo en tab Gastos) -->
     <div class="sticky-month-nav" id="stickyMonthNav"></div>
@@ -817,6 +839,19 @@ body{display:flex;}
       </div>
     </div>
   </div>
+
+  <!-- AÑOS ANTERIORES (solo lectura) -->
+  <div class="tab-panel" id="tab-archivo">
+    <div class="anual-header">
+      <div>
+        <h2>Años anteriores</h2>
+        <p style="color:var(--muted);font-size:var(--fs-sm);margin-top:4px;">Consultá un año completo, mes por mes. Es solo lectura: no se puede modificar nada desde acá.</p>
+      </div>
+      <button class="edit-btn primary" onclick="snapshotYear()" id="snapBtn">📸 Guardar foto del año</button>
+    </div>
+    <div class="year-select-row" id="archivoYears"></div>
+    <div id="archivoBody"></div>
+  </div>
 </div>
 </div><!-- /.app-main -->
 
@@ -901,6 +936,18 @@ body{display:flex;}
       <button class="calc-btn use" onclick="calcUse()">✓ Usar resultado</button>
 
       <button class="calc-btn cancel-calc" onclick="closeCalc()" style="grid-column:span 4;margin-top:2px;">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: recuperar copia -->
+<div class="modal-overlay" id="restoreModalOverlay">
+  <div class="modal" style="max-width:520px">
+    <h2>🗂️ Recuperar copia</h2>
+    <div class="modal-sub">Elegí una fecha para volver a ese estado de tus datos. Antes de restaurar se guarda una foto de lo actual.</div>
+    <div id="restoreList"></div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeRestoreModal()">Cerrar</button>
     </div>
   </div>
 </div>
@@ -1027,7 +1074,11 @@ let diarioCategorias = [
 
 // historicalData: { "2025": [{inc:X, exp:Y}, ...12 meses] }
 let historicalData = {};
-let selectedYears = ['2026'];
+// Años cerrados (o "fotos"): detalle COMPLETO de cada año {allData, gastosDiarios, objetivos, ...}.
+// historicalData sigue guardando solo los totales por mes para el Comparativo Anual.
+let archivedYears = {};
+let selectedYears = [String(new Date().getFullYear())];
+let anualYearInit = false;
 
 let currentMonth = 3;
 let charts = {};
@@ -1046,7 +1097,15 @@ const CLIENT_ID    = '136055934550-qivgj21ljcd2g5se6df0h2h0jv2uh873.apps.googleu
 const WORKER_URL   = 'https://finanzas-auth.gerpress89.workers.dev';
 const SCOPES       = 'https://www.googleapis.com/auth/drive.appdata openid email profile';
 const GDRIVE_FILE_NAME = 'finanzas_personales_data.json';
-const STORAGE_KEY  = 'finanzas_gp_v3';
+const STORAGE_KEY_BASE = 'finanzas_gp_v3';
+// Cada cuenta de Google guarda sus datos locales bajo su propia clave, así dos
+// personas (o dos cuentas) que usan el mismo navegador nunca se mezclan.
+// Las claves viejas sin email ('finanzas_gp_v3', '..._backup_...') quedan intactas
+// pero NO se leen: no hay forma de saber de quién eran.
+function storageKey() {
+  const email = (localStorage.getItem('g_user_email') || '').trim().toLowerCase();
+  return STORAGE_KEY_BASE + '__' + (email || 'anon');
+}
 const TOKEN_KEY    = 'g_access_token';
 const TOKEN_EXP    = 'g_token_exp';
 const USER_KEY     = 'g_user_email';
@@ -1167,9 +1226,11 @@ async function initGoogleAuth() {
             const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',
               { headers: { Authorization: 'Bearer ' + gAccessToken } });
             const u = await r.json();
+            if (!u.email) localStorage.removeItem(USER_KEY);
             saveToken(gAccessToken, tokens.expires_in || 3600, u.email || '');
             updateAuthUI(true, u.email || '');
           } catch(e) {
+            localStorage.removeItem(USER_KEY);
             saveToken(gAccessToken, tokens.expires_in || 3600, '');
             updateAuthUI(true, '');
           }
@@ -1353,7 +1414,7 @@ async function loadFromDrive() {
           // Drive está vacío pero este dispositivo tiene datos reales: gana lo local,
           // y se sube a Drive para repararlo.
           console.warn('Drive vacío con datos locales reales: se restaura Drive desde local.');
-          loadLocalData(false);
+          applyStoredLocal();
           dataLoaded = true;
           allData._year = allData._year || CURRENT_YEAR;
           renderAll();
@@ -1363,15 +1424,14 @@ async function loadFromDrive() {
         }
         // Foto de seguridad de lo local antes de reemplazarlo con lo de Drive
         try {
-          const prev = localStorage.getItem(STORAGE_KEY);
-          if (prev && storedHasRealData()) localStorage.setItem(STORAGE_KEY + '_prev_sync', prev);
+          const prev = localStorage.getItem(storageKey());
+          if (prev && storedHasRealData()) localStorage.setItem(storageKey() + '_prev_sync', prev);
         } catch(e) {}
         applyData(p);
         dataLoaded = true;
         // Update localStorage cache
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
-          allData, objetivos, gastosDiarios, historicalData, sectionTitles, diarioCategorias
-        }));
+        localStorage.setItem(storageKey(), JSON.stringify(currentPayload()));
+        await loadArchiveFilesFromDrive();
         const email = localStorage.getItem(USER_KEY)||'';
         setStatus('✅ ' + (email||'Sincronizado con Google Drive'), false);
         allData._year = allData._year || CURRENT_YEAR;
@@ -1382,7 +1442,7 @@ async function loadFromDrive() {
     }
     // No hay archivo en Drive (o no se pudo leer). Si hay datos locales, usarlos.
     if (storedHasRealData()) {
-      loadLocalData(false);
+      applyStoredLocal();
       dataLoaded = true;
       allData._year = allData._year || CURRENT_YEAR;
       renderAll();
@@ -1399,7 +1459,7 @@ async function loadFromDrive() {
   } catch(e) {
     if (e.message !== '401') {
       setStatus('🔴 No se pudo conectar a Drive — usando datos locales (revisá tu conexión)', false, true);
-      loadLocalData(false);
+      applyStoredLocal();
       if (storedHasRealData()) dataLoaded = true;
       allData._year = allData._year || CURRENT_YEAR;
       renderAll();
@@ -1410,7 +1470,7 @@ async function loadFromDrive() {
 async function saveToDrive() {
   if (!gAccessToken) return false;
   if (!dataLoaded || (!memoryHasRealData() && storedHasRealData())) return false;
-  const body = JSON.stringify({allData, objetivos, gastosDiarios, historicalData, sectionTitles, diarioCategorias});
+  const body = JSON.stringify(currentPayload());
   try {
     let fileId = await getDriveFileId();
     if (fileId) {
@@ -1444,6 +1504,11 @@ async function saveToDrive() {
 // el autoguardado de 30s escribía el estado vacío en memoria sobre los datos reales.
 let dataLoaded = false;
 
+// Todo lo que se guarda (local, Drive, backups, exportar) sale de acá.
+function currentPayload() {
+  return {allData, objetivos, gastosDiarios, historicalData, sectionTitles, diarioCategorias, archivedYears};
+}
+
 function payloadHasRealData(p) {
   if (!p) return false;
   const ad = p.allData || {};
@@ -1454,15 +1519,35 @@ function payloadHasRealData(p) {
   if (p.gastosDiarios && Object.keys(p.gastosDiarios).length) return true;
   if (p.objetivos && p.objetivos.length) return true;
   if (p.historicalData && Object.keys(p.historicalData).length) return true;
+  if (p.archivedYears && Object.keys(p.archivedYears).length) return true;
   return false;
 }
 
 function memoryHasRealData() {
-  return payloadHasRealData({allData, objetivos, gastosDiarios, historicalData});
+  return payloadHasRealData(currentPayload());
+}
+
+function monthsWithData(ad) {
+  let n = 0;
+  for (let i = 0; i < 12; i++) {
+    const m = ad && (ad[i] || ad[String(i)]);
+    if (m && ((m.clients||[]).length || (m.salary||[]).length || (m.expenses||[]).length)) n++;
+  }
+  return n;
+}
+
+// Lo guardado antes tenía meses cargados de este mismo año y ahora no queda ninguno:
+// es el patrón de una pérdida, no de un uso normal. (Al cerrar el año el año cambia, y sí se permite.)
+function wouldWipeMonths() {
+  try {
+    const st = JSON.parse(localStorage.getItem(storageKey()) || 'null');
+    if (!st || !st.allData) return false;
+    return monthsWithData(st.allData) > 0 && monthsWithData(allData) === 0 && st.allData._year === dashboardYear;
+  } catch(e) { return false; }
 }
 
 function storedHasRealData() {
-  try { return payloadHasRealData(JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')); }
+  try { return payloadHasRealData(JSON.parse(localStorage.getItem(storageKey()) || 'null')); }
   catch(e) { return false; }
 }
 
@@ -1479,19 +1564,19 @@ function applyData(p) {
   if (p.historicalData) historicalData = p.historicalData;
   if (p.sectionTitles) sectionTitles = p.sectionTitles;
   if (p.diarioCategorias) diarioCategorias = p.diarioCategorias;
+  // Se suman (no se reemplazan): un archivo viejo sin archivedYears nunca borra los años archivados
+  if (p.archivedYears) archivedYears = Object.assign({}, archivedYears, p.archivedYears);
 }
 
 function saveLocal() {
   if (!dataLoaded) return false;
-  if (!memoryHasRealData() && storedHasRealData()) {
-    console.warn('saveLocal bloqueado: el estado en memoria está vacío y el almacenamiento local tiene datos reales.');
+  if ((!memoryHasRealData() && storedHasRealData()) || wouldWipeMonths()) {
+    console.warn('saveLocal bloqueado: dejaría los meses vacíos sobre datos reales ya guardados.');
     return false;
   }
   allData._year = dashboardYear;
-  const payload = JSON.stringify({
-    allData, objetivos, gastosDiarios, historicalData, sectionTitles, diarioCategorias
-  });
-  localStorage.setItem(STORAGE_KEY, payload);
+  const payload = JSON.stringify(currentPayload());
+  localStorage.setItem(storageKey(), payload);
   saveBackupSnapshot(payload);
   return true;
 }
@@ -1505,7 +1590,7 @@ function saveBackupSnapshot(payload) {
   try {
     if (!payloadHasRealData(JSON.parse(payload))) return; // nunca pisar un backup bueno con uno vacío
     const today = new Date().toISOString().slice(0,10); // YYYY-MM-DD
-    const backupKey = STORAGE_KEY + '_backup_' + today;
+    const backupKey = storageKey() + '_backup_' + today;
     localStorage.setItem(backupKey, payload);
 
     const cutoff = new Date();
@@ -1513,8 +1598,8 @@ function saveBackupSnapshot(payload) {
     const keysToRemove = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && k.indexOf(STORAGE_KEY + '_backup_') === 0) {
-        const dateStr = k.slice((STORAGE_KEY + '_backup_').length);
+      if (k && k.indexOf(storageKey() + '_backup_') === 0) {
+        const dateStr = k.slice((storageKey() + '_backup_').length);
         const d = new Date(dateStr + 'T00:00:00');
         if (!isNaN(d) && d < cutoff) keysToRemove.push(k);
       }
@@ -1534,8 +1619,8 @@ window.listBackups = function() {
   const found = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
-    if (k && k.indexOf(STORAGE_KEY + '_backup_') === 0) {
-      const dateStr = k.slice((STORAGE_KEY + '_backup_').length);
+    if (k && k.indexOf(storageKey() + '_backup_') === 0) {
+      const dateStr = k.slice((storageKey() + '_backup_').length);
       const size = (localStorage.getItem(k) || '').length;
       found.push({fecha: dateStr, bytes: size});
     }
@@ -1546,7 +1631,7 @@ window.listBackups = function() {
 };
 
 window.restoreBackup = function(dateStr) {
-  const backupKey = STORAGE_KEY + '_backup_' + dateStr;
+  const backupKey = storageKey() + '_backup_' + dateStr;
   const raw = localStorage.getItem(backupKey);
   if (!raw) {
     console.error('No existe backup para la fecha', dateStr, '- corré listBackups() para ver las disponibles.');
@@ -1560,9 +1645,18 @@ window.restoreBackup = function(dateStr) {
   return true;
 };
 
+// Carga lo guardado en este dispositivo para la cuenta actual, sin depender de cookies.
+function applyStoredLocal() {
+  try {
+    const raw = localStorage.getItem(storageKey());
+    if (raw) { applyData(JSON.parse(raw)); return true; }
+  } catch(e) { console.warn('No se pudo leer lo local:', e); }
+  return false;
+}
+
 function loadLocalData(doRender=true) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey());
     // Only load local data if this user was previously logged in
     if (raw && getCookie('g_logged_in') === '1') {
       applyData(JSON.parse(raw));
@@ -1590,7 +1684,7 @@ async function saveToSheet() {
   if (!dataLoaded) return; // todavía no cargó los datos reales: no guardar nada
   const savedLocal = saveLocal();
   if (savedLocal === false) {
-    setStatus('🔴 Guardado bloqueado: datos vacíos, se protegen los datos existentes', false, true);
+    setStatus('🔴 Guardado bloqueado: quedarían todos los meses vacíos, se protegen los datos existentes', false, true);
     return;
   }
   if (gAccessToken) {
@@ -1598,14 +1692,307 @@ async function saveToSheet() {
     const ok = await saveToDrive();
     const email = localStorage.getItem(USER_KEY)||'';
     setStatus(ok ? '✅ Guardado · ' + (email||'Google Drive') : '🔴 Error al guardar en Drive — reintentará solo', false, !ok);
+    if (ok) driveBackupIfNeeded(); // sin await: no frena el guardado
   } else {
     setStatus('✅ Guardado localmente', false);
   }
 }
 
+// ── Backup diario en Drive ────────────────────────────────────────────────────
+// Una copia por día (finanzas_backup_AAAA-MM-DD.json) en la appDataFolder de la
+// cuenta, conservando las últimas 14. Vive en la nube de cada persona, así se
+// puede recuperar desde cualquier dispositivo sin tocar el celular de nadie.
+const DRIVE_BACKUP_PREFIX = 'finanzas_backup_';
+const DRIVE_BACKUP_KEEP   = 14;
+
+function todayLocalStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+async function listDriveFilesByPrefix(prefix) {
+  const res = await authFetch(
+    'https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=200&q=' +
+    encodeURIComponent('trashed=false') + '&fields=files(id,name,size,modifiedTime)'
+  );
+  if (!res.ok) throw new Error('list_files_' + res.status);
+  const data = await res.json();
+  return (data.files || [])
+    .filter(f => f.name && f.name.indexOf(prefix) === 0)
+    .sort((a,b) => b.name.localeCompare(a.name)); // más nueva primero
+}
+
+async function listDriveBackups() { return listDriveFilesByPrefix(DRIVE_BACKUP_PREFIX); }
+
+// ── Años archivados: segunda copia en Drive, un archivo por año ──────────────
+// Además de ir dentro del archivo principal, cada año archivado se guarda en su
+// propio archivo (finanzas_anio_2026.json). Si alguna versión vieja de la app
+// pisara el archivo principal, los años cerrados siguen a salvo acá.
+const DRIVE_ARCHIVE_PREFIX = 'finanzas_anio_';
+
+async function saveArchiveToDrive(year) {
+  if (!gAccessToken || !archivedYears[year]) return false;
+  try {
+    const files = await listDriveFilesByPrefix(DRIVE_ARCHIVE_PREFIX);
+    const name = DRIVE_ARCHIVE_PREFIX + year + '.json';
+    let id = (files.find(f => f.name === name) || {}).id;
+    if (!id) {
+      const meta = await authFetch('https://www.googleapis.com/drive/v3/files', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({name, mimeType:'application/json', parents:['appDataFolder']})
+      });
+      if (!meta.ok) return false;
+      id = (await meta.json()).id;
+    }
+    const up = await authFetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`,
+      {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(archivedYears[year])}
+    );
+    return up.ok;
+  } catch(e) { console.warn('No se pudo guardar el año archivado en Drive:', e); return false; }
+}
+
+async function loadArchiveFilesFromDrive() {
+  try {
+    const files = await listDriveFilesByPrefix(DRIVE_ARCHIVE_PREFIX);
+    let added = false;
+    for (const f of files) {
+      const year = f.name.slice(DRIVE_ARCHIVE_PREFIX.length).replace('.json','');
+      if (archivedYears[year]) continue;
+      const res = await authFetch('https://www.googleapis.com/drive/v3/files/' + f.id + '?alt=media');
+      if (!res.ok) continue;
+      const snap = await res.json();
+      if (snap && snap.allData) { archivedYears[year] = snap; added = true; }
+    }
+    if (added && dataLoaded) { saveLocal(); }
+  } catch(e) { console.warn('No se pudieron leer los años archivados de Drive:', e); }
+}
+
+async function driveBackupIfNeeded() {
+  try {
+    if (!gAccessToken || !dataLoaded || !memoryHasRealData()) return;
+    const day = todayLocalStr();
+    const flagKey = storageKey() + '_driveBackupDay';
+    if (localStorage.getItem(flagKey) === day) return;
+
+    let files = await listDriveBackups();
+    const name = DRIVE_BACKUP_PREFIX + day + '.json';
+    if (!files.some(f => f.name === name)) {
+      const body = JSON.stringify(currentPayload());
+      const meta = await authFetch('https://www.googleapis.com/drive/v3/files', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({name, mimeType:'application/json', parents:['appDataFolder']})
+      });
+      if (!meta.ok) return;
+      const created = await meta.json();
+      const up = await authFetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${created.id}?uploadType=media`,
+        {method:'PATCH', headers:{'Content-Type':'application/json'}, body}
+      );
+      if (!up.ok) return;
+      files = [{id: created.id, name}].concat(files).sort((a,b) => b.name.localeCompare(a.name));
+    }
+    // Poda: dejar solo las últimas DRIVE_BACKUP_KEEP
+    for (const old of files.slice(DRIVE_BACKUP_KEEP)) {
+      await authFetch('https://www.googleapis.com/drive/v3/files/' + old.id, {method:'DELETE'});
+    }
+    localStorage.setItem(flagKey, day);
+  } catch(e) {
+    console.warn('Backup diario en Drive no completado:', e);
+  }
+}
+
+// ── Años anteriores (solo lectura) ────────────────────────────────────────────
+let archivoYear = null, archivoMonth = null;
+
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function archivoSelect(year, month) {
+  if (year !== undefined && year !== null) { archivoYear = String(year); archivoMonth = null; }
+  if (month !== undefined && month !== null) archivoMonth = month;
+  renderArchivo();
+}
+
+function renderArchivo() {
+  const years = Object.keys(archivedYears).sort().reverse();
+  const row = document.getElementById('archivoYears');
+  const body = document.getElementById('archivoBody');
+  const snapBtn = document.getElementById('snapBtn');
+  if (!row || !body) return;
+  if (snapBtn) snapBtn.textContent = '📸 Guardar foto de ' + dashboardYear;
+
+  if (!years.length) {
+    row.innerHTML = '';
+    body.innerHTML = '<div class="arch-note">Todavía no hay años archivados. Cuando cierres el año (cartel de "Nuevo año" en enero) queda guardado acá completo. ' +
+                     'Mientras tanto podés apretar <b>📸 Guardar foto de ' + esc(dashboardYear) + '</b> para guardar una copia del año en curso y ver cómo se consulta.</div>';
+    return;
+  }
+  if (!archivoYear || !archivedYears[archivoYear]) archivoYear = years[0];
+  const snap = archivedYears[archivoYear];
+  const ad = snap.allData || {};
+
+  row.innerHTML = years.map(y => `<button class="year-chip ${y===archivoYear?'active':''}" onclick="archivoSelect('${esc(y)}')">${esc(y)}${archivedYears[y].cerrado?'':' 📸'}</button>`).join('');
+
+  if (archivoMonth === null) {
+    // por defecto: el último mes con datos
+    for (let i = 11; i >= 0; i--) { if (ad[i] && ((ad[i].clients||[]).length || (ad[i].salary||[]).length || (ad[i].expenses||[]).length)) { archivoMonth = i; break; } }
+    if (archivoMonth === null) archivoMonth = 0;
+  }
+
+  const fecha = snap.fecha ? snap.fecha.split('-').reverse().join('/') : '';
+  let html = '<div class="arch-note">' + (snap.cerrado
+    ? '📚 Año <b>' + esc(archivoYear) + '</b> cerrado' + (fecha ? ' el ' + esc(fecha) : '') + '. Lo que ves es exactamente lo que había cargado.'
+    : '📸 Foto de <b>' + esc(archivoYear) + '</b> tomada el ' + esc(fecha) + ' (el año todavía no se cerró; es una copia de resguardo).') + '</div>';
+
+  // Resumen del año, mes por mes
+  let tInc = 0, tExp = 0;
+  const rows = MONTHS.map((m, i) => {
+    const d = ad[i];
+    if (!d) return `<tr class="arch-row arch-empty ${i===archivoMonth?'active':''}" onclick="archivoSelect(null,${i})"><td>${m}</td><td>—</td><td>—</td><td>—</td></tr>`;
+    const t = calcTotals(d); tInc += t.totalInc; tExp += t.totalExp;
+    return `<tr class="arch-row ${i===archivoMonth?'active':''}" onclick="archivoSelect(null,${i})"><td>${m}</td><td>${fmt(t.totalInc)}</td><td>${fmt(t.totalExp)}</td><td class="${t.saldo>=0?'arch-pos':'arch-neg'}">${fmt(t.saldo)}</td></tr>`;
+  }).join('');
+  html += `<table class="arch-table"><thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Saldo</th></tr></thead><tbody>${rows}` +
+          `<tr class="arch-total"><td>Total ${esc(archivoYear)}</td><td>${fmt(tInc)}</td><td>${fmt(tExp)}</td><td class="${tInc-tExp>=0?'arch-pos':'arch-neg'}">${fmt(tInc-tExp)}</td></tr></tbody></table>`;
+
+  // Detalle del mes elegido
+  const data = ad[archivoMonth];
+  html += `<h3 class="arch-h">${MONTHS[archivoMonth]} ${esc(archivoYear)}</h3>`;
+  const titles = Object.assign({}, sectionTitles, snap.sectionTitles || {});
+  if (!data) {
+    html += '<div class="kpi-card"><div class="no-data"><div class="no-data-icon">📊</div><h3>Sin datos para ' + MONTHS[archivoMonth] + '</h3></div></div>';
+  } else {
+    const t = calcTotals(data);
+    const ratio = t.totalInc > 0 ? (t.totalExp/t.totalInc*100).toFixed(1) : 0;
+    html += `<div class="kpi-grid">
+      <div class="kpi-card inctotal"><div class="kpi-label">💰 Total Ingresos</div><div class="kpi-value">${fmt(t.totalInc)}</div><div class="kpi-sub">${esc(titles.clients)} + ${esc(titles.salary)}</div></div>
+      <div class="kpi-card expense"><div class="kpi-label">💸 Total Gastos</div><div class="kpi-value">${fmt(t.totalExp)}</div><div class="progress-bar"><div class="progress-fill" style="width:${Math.min(ratio,100)}%;background:var(--red)"></div></div></div>
+      <div class="kpi-card balance"><div class="kpi-label">Saldo Neto</div><div class="kpi-value">${fmt(t.saldo)}</div><div class="kpi-sub">${t.saldo>=0?'✅ Superávit':'⚠️ Déficit'}</div></div>
+      <div class="kpi-card inc1"><div class="kpi-label">${esc(titles.clients)}</div><div class="kpi-value">${fmt(t.totalClients)}</div></div>
+      <div class="kpi-card inc2"><div class="kpi-label">${esc(titles.salary)}</div><div class="kpi-value">${fmt(t.totalSalary)}</div></div>
+      <div class="kpi-card saving"><div class="kpi-label">% Gastado</div><div class="kpi-value">${ratio}%</div><div class="kpi-sub">de los ingresos totales</div></div>
+    </div>`;
+    const card = (title, dot, items, total, cls) => `<div class="control-card">
+      <div class="control-head"><div class="control-dot" style="background:${dot}"></div><h3>${esc(title)}</h3>
+        <span class="control-total" style="color:${dot}">${fmt(total)}</span><span class="control-progress">${items.filter(x=>x.done).length}/${items.length}</span></div>
+      <div>${items.map(it => `<div class="control-item ${it.done?'checked':''}"><div class="check-box ${it.done?'done':''}" style="pointer-events:none"></div><span class="item-name">${esc(it.label)}</span><span class="item-amount ${cls}">${fmt(it.amount)}</span></div>`).join('') || '<div class="no-data" style="padding:30px"><p>Sin items</p></div>'}</div>
+    </div>`;
+    html += '<div class="control-grid">' +
+      card(titles.clients, 'var(--green)', data.clients||[], t.totalClients, 'inc') +
+      card(titles.salary, '#a8e86e', data.salary||[], t.totalSalary, 'inc') +
+      card(titles.expenses, 'var(--red)', data.expenses||[], t.totalExp, 'exp') + '</div>';
+  }
+
+  // Registro diario del mes
+  const gd = snap.gastosDiarios || {};
+  const cats = (snap.diarioCategorias && snap.diarioCategorias.length) ? snap.diarioCategorias : diarioCategorias;
+  const entries = Object.entries(gd).filter(([d]) => getMonthFromDate(d) === archivoMonth)
+    .flatMap(([d, arr]) => arr.map(e => ({...e, date: d}))).sort((a,b) => b.date.localeCompare(a.date));
+  if (entries.length) {
+    const groups = cats.map(c => ({c, items: entries.filter(e => e.tipo === c.id)}));
+    const known = new Set(cats.map(c => c.id));
+    const others = entries.filter(e => !known.has(e.tipo));
+    if (others.length) groups.push({c: {id:'otros', emoji:'📌', nombre:'Otras', color:'var(--muted)'}, items: others});
+    html += '<h3 class="arch-h">Registro diario · ' + MONTHS[archivoMonth] + '</h3><div class="control-grid">' +
+      groups.filter(g => g.items.length).map(g => `<div class="control-card">
+        <div class="control-head"><div class="control-dot" style="background:${g.c.color}"></div><h3>${esc(g.c.emoji)} ${esc(g.c.nombre)}</h3>
+          <span class="control-total" style="color:${g.c.color};margin-left:auto">${fmt(g.items.reduce((a,e)=>a+e.amount,0))}</span><span class="control-progress" style="margin-left:9px">${g.items.length} items</span></div>
+        <div>${g.items.map(e => `<div class="diario-item"><span class="diario-date">${esc(e.date.slice(5).replace('-','/'))}</span><span class="diario-desc">${esc(e.desc)}</span><span class="diario-amount" style="color:${g.c.color}">${fmt(e.amount)}</span></div>`).join('')}</div>
+      </div>`).join('') + '</div>';
+  }
+  body.innerHTML = html;
+}
+
+// ── Recuperar copia (modal) ───────────────────────────────────────────────────
+function fmtBytes(n) {
+  n = parseInt(n) || 0;
+  return n >= 1024 ? (n/1024).toFixed(1) + ' KB' : n + ' B';
+}
+
+function localBackupList() {
+  const prefix = storageKey() + '_backup_';
+  const out = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.indexOf(prefix) === 0) {
+      const raw = localStorage.getItem(k) || '';
+      out.push({fecha: k.slice(prefix.length), bytes: raw.length, key: k});
+    }
+  }
+  return out.sort((a,b) => b.fecha.localeCompare(a.fecha));
+}
+
+async function openRestoreModal() {
+  const box = document.getElementById('restoreList');
+  document.getElementById('restoreModalOverlay').classList.add('open');
+  const email = localStorage.getItem(USER_KEY) || '';
+  let html = '<div class="restore-sec">En Google Drive' + (email ? ' (' + email + ')' : '') + '</div>';
+  if (!gAccessToken) {
+    html += '<div class="restore-empty">Iniciá sesión para ver las copias de Drive.</div>';
+  } else {
+    box.innerHTML = html + '<div class="restore-empty">Cargando…</div>';
+    try {
+      const files = await listDriveBackups();
+      if (!files.length) html += '<div class="restore-empty">Todavía no hay copias en Drive. Se crea una por día al guardar.</div>';
+      files.forEach(f => {
+        const day = f.name.slice(DRIVE_BACKUP_PREFIX.length).replace('.json','');
+        html += `<div class="restore-row"><span>📅 ${day}</span><span class="restore-size">${fmtBytes(f.size)}</span>` +
+                `<button class="btn" onclick="restoreFromDrive('${f.id}','${day}')">Restaurar</button></div>`;
+      });
+    } catch(e) {
+      html += '<div class="restore-empty">No se pudo leer Drive. Probá de nuevo en un rato.</div>';
+    }
+  }
+  html += '<div class="restore-sec">En este dispositivo</div>';
+  const locals = localBackupList();
+  if (!locals.length) html += '<div class="restore-empty">No hay copias locales de esta cuenta.</div>';
+  locals.forEach(b => {
+    html += `<div class="restore-row"><span>📅 ${b.fecha}</span><span class="restore-size">${fmtBytes(b.bytes)}</span>` +
+            `<button class="btn" onclick="restoreFromLocal('${b.fecha}')">Restaurar</button></div>`;
+  });
+  box.innerHTML = html;
+}
+
+function closeRestoreModal() {
+  document.getElementById('restoreModalOverlay').classList.remove('open');
+}
+
+async function applyRestore(p, label) {
+  if (!payloadHasRealData(p)) { alert('Esa copia está vacía, no se restaura.'); return; }
+  if (!confirm('Vas a reemplazar los datos actuales por la copia del ' + label + '.\n\nSe guarda una foto de lo actual por si querés volver atrás. ¿Continuar?')) return;
+  try {
+    if (memoryHasRealData()) {
+      localStorage.setItem(storageKey() + '_prev_restore', JSON.stringify(currentPayload()));
+    }
+  } catch(e) {}
+  applyData(p);
+  dataLoaded = true;
+  allData._year = allData._year || CURRENT_YEAR;
+  renderAll();
+  closeRestoreModal();
+  await saveToSheet();
+}
+
+async function restoreFromDrive(fileId, day) {
+  try {
+    const res = await authFetch('https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media');
+    if (!res.ok) throw new Error('status ' + res.status);
+    await applyRestore(await res.json(), day);
+  } catch(e) { alert('No se pudo leer esa copia: ' + e.message); }
+}
+
+async function restoreFromLocal(fecha) {
+  try {
+    const raw = localStorage.getItem(storageKey() + '_backup_' + fecha);
+    await applyRestore(JSON.parse(raw), fecha);
+  } catch(e) { alert('No se pudo leer esa copia: ' + e.message); }
+}
+
 function exportData() {
   allData._year = dashboardYear;
-  const json = JSON.stringify({allData, objetivos, gastosDiarios, historicalData, sectionTitles, diarioCategorias}, null, 2);
+  const json = JSON.stringify(currentPayload(), null, 2);
   const a = document.createElement('a');
   a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
   a.download = 'finanzas_' + dashboardYear + '_backup.json';
@@ -1634,10 +2021,10 @@ function importData(event) {
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 function switchTab(t) {
-  const tabs = ['gastos','diario','objetivos','anual'];
+  const tabs = ['gastos','diario','objetivos','anual','archivo'];
   document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', tabs[i]===t));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id==='tab-'+t));
-  ['gastos','diario','objetivos','anual'].forEach(tab=>{const el=document.getElementById('snav-'+tab);if(el)el.classList.toggle('active',tab===t);});
+  ['gastos','diario','objetivos','anual','archivo'].forEach(tab=>{const el=document.getElementById('snav-'+tab);if(el)el.classList.toggle('active',tab===t);});
   closeMobileSidebar();
   // Mostrar/ocultar selector de meses sticky solo en la pestaña Gastos
   const smn = document.getElementById('stickyMonthNav');
@@ -1648,6 +2035,7 @@ function switchTab(t) {
     renderDiario();
   }
   if (t==='anual') renderAnual();
+  if (t==='archivo') renderArchivo();
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -2722,7 +3110,9 @@ function renderAnual(){
   });
 
   // Year chips
-  const allYears = ['2026',...Object.keys(historicalData)].sort();
+  const cy = String(dashboardYear);
+  if (!anualYearInit) { anualYearInit = true; if (!selectedYears.includes(cy)) selectedYears.push(cy); }
+  const allYears = [cy, ...Object.keys(historicalData).filter(y => y !== cy)].sort();
   const row = document.getElementById('yearSelectRow');
   row.innerHTML = allYears.map(y=>`
     <button class="year-chip ${selectedYears.includes(y)?'active':''}" onclick="toggleYear('${y}')">${y}</button>
@@ -2735,20 +3125,20 @@ function renderAnual(){
   const tot2026Exp = data2026.filter(d=>d.exp!==null).reduce((a,d)=>a+d.exp,0);
   const tot2026Sal = tot2026Inc - tot2026Exp;
 
-  const prevYear = Object.keys(historicalData).sort().pop();
+  const prevYear = Object.keys(historicalData).filter(y => y !== cy).sort().pop();
   let kpiHtml = `
     <div class="kpi-card inctotal">
-      <div class="kpi-label">Ingresos 2026</div>
+      <div class="kpi-label">Ingresos ${cy}</div>
       <div class="kpi-value">${fmt(tot2026Inc)}</div>
       <div class="kpi-sub">${years2026Inc.length} meses registrados</div>
     </div>
     <div class="kpi-card expense">
-      <div class="kpi-label">Gastos 2026</div>
+      <div class="kpi-label">Gastos ${cy}</div>
       <div class="kpi-value">${fmt(tot2026Exp)}</div>
       <div class="kpi-sub">Total acumulado</div>
     </div>
     <div class="kpi-card balance">
-      <div class="kpi-label">Saldo 2026</div>
+      <div class="kpi-label">Saldo ${cy}</div>
       <div class="kpi-value">${fmt(tot2026Sal)}</div>
       <div class="kpi-sub">${tot2026Sal>=0?'✅ Superávit':'⚠️ Déficit'}</div>
     </div>`;
@@ -2786,14 +3176,14 @@ function renderAnual(){
 
   const incDatasets=[], expDatasets=[], saldoDatasets=[];
 
-  if(selectedYears.includes('2026')){
-    incDatasets.push({label:'2026',data:data2026.map(d=>d.inc),borderColor:YEAR_COLORS[0],backgroundColor:YEAR_COLORS[0]+'20',fill:false,tension:0.4,pointBackgroundColor:YEAR_COLORS[0],pointRadius:5,spanGaps:false});
-    expDatasets.push({label:'2026',data:data2026.map(d=>d.exp),borderColor:YEAR_COLORS[0],backgroundColor:YEAR_COLORS[0]+'20',fill:false,tension:0.4,pointBackgroundColor:YEAR_COLORS[0],pointRadius:5,spanGaps:false});
-    saldoDatasets.push({label:'2026',data:data2026.map(d=>d.inc!==null&&d.exp!==null?d.inc-d.exp:null),borderColor:YEAR_COLORS[0],fill:false,tension:0.4,pointBackgroundColor:YEAR_COLORS[0],pointRadius:5,spanGaps:false});
+  if(selectedYears.includes(cy)){
+    incDatasets.push({label:cy,data:data2026.map(d=>d.inc),borderColor:YEAR_COLORS[0],backgroundColor:YEAR_COLORS[0]+'20',fill:false,tension:0.4,pointBackgroundColor:YEAR_COLORS[0],pointRadius:5,spanGaps:false});
+    expDatasets.push({label:cy,data:data2026.map(d=>d.exp),borderColor:YEAR_COLORS[0],backgroundColor:YEAR_COLORS[0]+'20',fill:false,tension:0.4,pointBackgroundColor:YEAR_COLORS[0],pointRadius:5,spanGaps:false});
+    saldoDatasets.push({label:cy,data:data2026.map(d=>d.inc!==null&&d.exp!==null?d.inc-d.exp:null),borderColor:YEAR_COLORS[0],fill:false,tension:0.4,pointBackgroundColor:YEAR_COLORS[0],pointRadius:5,spanGaps:false});
   }
 
   Object.keys(historicalData).sort().forEach((yr,i)=>{
-    if(!selectedYears.includes(yr)) return;
+    if(yr===cy || !selectedYears.includes(yr)) return;
     const hd=historicalData[yr];
     const col=YEAR_COLORS[(i+1)%YEAR_COLORS.length];
     incDatasets.push({label:yr,data:hd.map(d=>d.inc||null),borderColor:col,fill:false,tension:0.4,pointBackgroundColor:col,pointRadius:5,borderDash:[4,3],spanGaps:false});
@@ -2918,7 +3308,7 @@ function saveCategorias() {
 
 
 // ── Close modals on overlay ───────────────────────────────────────────────────
-['modalOverlay','objModalOverlay','diarioModalOverlay','anualModalOverlay','categoriasModalOverlay'].forEach(id=>{
+['modalOverlay','objModalOverlay','diarioModalOverlay','anualModalOverlay','categoriasModalOverlay','restoreModalOverlay'].forEach(id=>{
   document.getElementById(id).addEventListener('click',e=>{
     if(e.target===document.getElementById(id)) document.getElementById(id).classList.remove('open');
   });
@@ -2946,7 +3336,7 @@ function checkNewYear() {
   if (storedYear < CURRENT_YEAR) {
     const prevYear = storedYear;
     document.getElementById('newYearMsg').textContent =
-      `Tus datos son de ${prevYear}. Podés archivarlos como histórico y empezar ${CURRENT_YEAR} desde cero.`;
+      `Tus datos son de ${prevYear}. Podés cerrarlo (queda guardado completo en "Años anteriores") y empezar ${CURRENT_YEAR} desde cero.`;
     document.getElementById('newYearBanner').style.display = 'block';
   }
 }
@@ -2955,31 +3345,72 @@ function dismissNewYear() {
   document.getElementById('newYearBanner').style.display = 'none';
 }
 
-function startNewYear() {
-  const prevYear = dashboardYear;
+// Foto completa del estado actual del año (copia profunda: no comparte referencias)
+function buildYearSnapshot(closed) {
+  const snapAll = JSON.parse(JSON.stringify(allData));
+  delete snapAll._year;
+  return {
+    allData: snapAll,
+    gastosDiarios: JSON.parse(JSON.stringify(gastosDiarios)),
+    objetivos: JSON.parse(JSON.stringify(objetivos)),
+    sectionTitles: JSON.parse(JSON.stringify(sectionTitles)),
+    diarioCategorias: JSON.parse(JSON.stringify(diarioCategorias)),
+    cerrado: !!closed,
+    fecha: new Date().toISOString().slice(0,10)
+  };
+}
 
-  // Archive current allData as historical (monthly inc/exp totals)
-  const months12 = Array(12).fill(null).map((_,i) => {
+function totalsByMonth() {
+  return Array(12).fill(null).map((_,i) => {
     const d = allData[i];
     if (!d) return {inc: null, exp: null};
     const t = calcTotals(d);
     return {inc: t.totalInc, exp: t.totalExp};
   });
-  historicalData[String(prevYear)] = months12;
-  if (!selectedYears.includes(String(prevYear))) selectedYears.push(String(prevYear));
+}
 
-  // Reset allData for new year
+function startNewYear() {
+  const prevYear = dashboardYear;
+  if (!confirm('Vas a cerrar ' + prevYear + ' y empezar ' + CURRENT_YEAR + ' desde cero.\n\n' +
+               prevYear + ' queda guardado COMPLETO (mes por mes, con cada ingreso, gasto y registro diario) en la pestaña "Años anteriores".\n\n¿Continuar?')) return;
+
+  // 1) Archivar el año completo, solo si hay algo que archivar (nunca pisar un archivo bueno con uno vacío)
+  const snap = buildYearSnapshot(true);
+  const hasSomething = payloadHasRealData({allData: snap.allData, gastosDiarios: snap.gastosDiarios});
+  if (hasSomething || !archivedYears[prevYear]) archivedYears[String(prevYear)] = snap;
+  // 2) Totales por mes para el Comparativo Anual
+  historicalData[String(prevYear)] = totalsByMonth();
+  if (!selectedYears.includes(String(prevYear))) selectedYears.push(String(prevYear));
+  if (!selectedYears.includes(String(CURRENT_YEAR))) selectedYears.push(String(CURRENT_YEAR));
+
+  // 3) Guardar la copia del año cerrado ANTES de vaciar nada
+  dataLoaded = true;
+  saveLocal();
+
+  // 4) Año nuevo desde cero
   allData = { _year: CURRENT_YEAR };
   gastosDiarios = {};
   // Keep objetivos (user can update them)
 
   updateYearLabels(CURRENT_YEAR);
   document.getElementById('newYearBanner').style.display = 'none';
-  setStatus(`✅ ${prevYear} archivado como histórico. Bienvenido a ${CURRENT_YEAR}!`, false);
+  setStatus(`✅ ${prevYear} archivado completo. Bienvenido a ${CURRENT_YEAR}!`, false);
 
   renderAll();
-  // Auto-save
   saveToSheet();
+  saveArchiveToDrive(String(prevYear)); // segunda copia, en su propio archivo
+}
+
+// Guarda una foto del año en curso SIN vaciar nada (sirve de resguardo y para probar la consulta)
+async function snapshotYear() {
+  if (!memoryHasRealData()) { alert('Todavía no hay datos para guardar.'); return; }
+  const yr = String(dashboardYear);
+  archivedYears[yr] = buildYearSnapshot(false);
+  saveLocal();
+  renderArchivo();
+  await saveToSheet();
+  const ok = await saveArchiveToDrive(yr);
+  setStatus(ok ? '📸 Foto de ' + yr + ' guardada' : '📸 Foto de ' + yr + ' guardada en este dispositivo (Drive falló)', false, !ok);
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
