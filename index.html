@@ -975,7 +975,13 @@ body{display:flex;}
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:18px;">
       <div class="modal-sub" id="modalSub" style="margin-bottom:0"></div>
       <button class="btn-ghost" id="copyPrevBtn" onclick="copyPrevMonth()" style="font-size:12px;padding:7px 14px;white-space:nowrap;">📋 Copiar mes anterior</button>
+      <button class="btn-ghost" id="copyOtherBtn" onclick="toggleCopyFrom()" style="font-size:12px;padding:7px 14px;white-space:nowrap;">📋 Copiar de otro mes / año</button>
       <button class="btn-ghost" onclick="clearCurrentMonth()" style="font-size:12px;padding:7px 14px;white-space:nowrap;border-color:var(--red);color:var(--red);">🗑️ Limpiar mes</button>
+    </div>
+    <div id="copyFromPanel" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;margin:-6px 0 16px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--surface2);">
+      <span style="font-size:13px;color:var(--muted);">Copiar desde:</span>
+      <select id="copyFromSel" style="background:var(--surface);color:inherit;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;"></select>
+      <button class="btn" onclick="applyCopyFrom()" style="font-size:12px;padding:7px 14px;">Copiar</button>
     </div>
 
     <div class="modal-section">
@@ -2676,8 +2682,56 @@ function copyPrevMonth() {
   document.getElementById('modalSub').style.color = 'var(--accent)';
 }
 
+// ── Copiar de cualquier mes / año ─────────────────────────────────────────────
+function copySources() {
+  const out = [];
+  const has = m => m && ((m.clients||[]).length || (m.salary||[]).length || (m.expenses||[]).length);
+  // Año que se está editando
+  for (let i = 0; i < 12; i++) if (has(allData[i]) && i !== currentMonth) out.push({y: dashboardYear, m: i, d: allData[i]});
+  // Otros años guardados
+  Object.keys(archivedYears).filter(y => parseInt(y) !== dashboardYear).sort().forEach(y => {
+    const ad = (archivedYears[y] && archivedYears[y].allData) || {};
+    for (let i = 0; i < 12; i++) if (has(ad[i] || ad[String(i)])) out.push({y: parseInt(y), m: i, d: ad[i] || ad[String(i)]});
+  });
+  return out;
+}
+
+function toggleCopyFrom() {
+  const panel = document.getElementById('copyFromPanel');
+  if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
+  const src = copySources();
+  if (!src.length) { alert('No hay ningún otro mes cargado para copiar.'); return; }
+  const sel = document.getElementById('copyFromSel');
+  sel.innerHTML = src.map(s => `<option value="${s.y}|${s.m}">${MONTHS[s.m]} ${s.y}</option>`).join('');
+  panel.style.display = 'flex';
+}
+
+function applyCopyFrom() {
+  const v = document.getElementById('copyFromSel').value;
+  if (!v) return;
+  const [y, m] = v.split('|').map(Number);
+  const src = copySources().find(s => s.y === y && s.m === m);
+  if (!src) return;
+  const labels = new Set();   // las cuotas de metas se agregan solas según lo tildado: no se copian
+  objetivos.forEach(obj => Object.keys(obj.meses || {}).forEach(k => {
+    const cl = (obj.mesesLabels && obj.mesesLabels[k]) ? obj.mesesLabels[k] : '';
+    labels.add(obj.emoji + ' ' + obj.nombre + (cl ? ' — ' + cl : ''));
+  }));
+  const hasRows = [...document.querySelectorAll('#clientFields input, #salaryFields input, #expenseFields input')].some(i => i.value.trim());
+  if (hasRows && !confirm('Lo que ya tenés escrito en este mes se va a reemplazar por lo de ' + MONTHS[m] + ' ' + y + ' (hasta que guardes, podés cerrar sin cambios).\n\n¿Continuar?')) return;
+  ['clientFields','salaryFields','expenseFields'].forEach(id => document.getElementById(id).innerHTML = '');
+  (src.d.clients||[]).forEach(i => addRow('clients', i.label, i.amount));
+  (src.d.salary||[]).forEach(i => addRow('salary', i.label, i.amount));
+  (src.d.expenses||[]).filter(i => !labels.has(i.label)).forEach(i => addRow('expenses', i.label, i.amount));
+  ['clientFields','salaryFields','expenseFields'].forEach(id => { if (!document.getElementById(id).children.length) addRow({clientFields:'clients',salaryFields:'salary',expenseFields:'expenses'}[id]); });
+  document.getElementById('copyFromPanel').style.display = 'none';
+  document.getElementById('modalSub').textContent = 'Copiado desde ' + MONTHS[m] + ' ' + y + ' — revisá y ajustá los importes antes de guardar';
+  document.getElementById('modalSub').style.color = 'var(--accent)';
+}
+
 // ── Modal: cargar mes ─────────────────────────────────────────────────────────
 function openModal(){
+  document.getElementById('copyFromPanel').style.display = 'none';
   const data=allData[currentMonth];
   document.getElementById('modalTitle').textContent=`${MONTHS[currentMonth]} — Cargar datos`;
   document.getElementById('modalSub').textContent=`Ingresá los ingresos y gastos de ${MONTHS[currentMonth]} ${dashboardYear}`;
@@ -2713,7 +2767,7 @@ function addRow(section,label='',amount=''){
   const cont=document.getElementById(map[section]);
   const row=document.createElement('div');
   row.className='field-row';
-  row.innerHTML=`<input type="text" placeholder="Descripción" value="${label}"><input type="number" placeholder="Importe" value="${amount||''}"><button class="btn-del" onclick="this.parentElement.remove()">✕</button>`;
+  row.innerHTML=`<input type="text" placeholder="Descripción" value="${String(label).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}"><input type="number" placeholder="Importe" value="${amount||''}"><button class="btn-del" onclick="this.parentElement.remove()">✕</button>`;
   cont.appendChild(row);
 }
 
