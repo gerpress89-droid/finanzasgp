@@ -33,6 +33,9 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .header-left p{color:var(--muted);font-size:var(--fs-md);margin-top:6px;}
 .year-badge{background:var(--surface2);border:1px solid var(--border);border-radius:100px;padding:4px 10px;font-size:var(--fs-sm);font-weight:700;color:var(--accent);letter-spacing:2px;}
 .year-badge select{background:transparent;border:none;color:var(--accent);font:inherit;letter-spacing:2px;cursor:pointer;padding:4px 6px;outline:none;}
+.mobile-year-row{display:none;align-items:center;gap:10px;padding:6px 2px;font-size:13px;color:var(--muted);}
+.mobile-year-row select{background:var(--surface2);border:1px solid var(--accent);border-radius:100px;color:var(--accent);font:inherit;font-weight:700;letter-spacing:1px;padding:6px 14px;outline:none;}
+@media(max-width:700px){.mobile-year-row{display:flex;}}
 .year-badge select option{background:var(--surface2);color:var(--text,#eee);letter-spacing:0;}
 .header-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
 .edit-btn{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:9px 16px;font-family:'DM Sans',sans-serif;font-size:var(--fs-sm);font-weight:600;color:var(--muted);cursor:pointer;transition:all 0.2s;}
@@ -737,6 +740,8 @@ body{display:flex;}
         <button id="authBtn" onclick="signIn()" class="edit-btn nav-btn-auth">🔐 Entrar</button>
       </div>
     </div>
+    <!-- Año (solo celular: el encabezado grande está oculto ahí) -->
+    <div class="mobile-year-row"><span>📅 Año</span><select id="yearSelectM" onchange="onYearSelect(this)" title="Elegir año"></select></div>
     <!-- Tabs -->
     <div class="sticky-tabs">
       <button class="tab-btn active" onclick="switchTab('gastos')">📊 Gastos &amp; Ingresos</button>
@@ -3401,10 +3406,9 @@ function availableYears() {
 }
 
 function renderYearSelect() {
-  const sel = document.getElementById('yearSelect');
-  if (!sel) return;
-  sel.innerHTML = availableYears().map(y => `<option value="${y}" ${y===dashboardYear?'selected':''}>${y}</option>`).join('')
-                + '<option value="otro">➕ Otro año…</option>';
+  const html = availableYears().map(y => `<option value="${y}" ${y===dashboardYear?'selected':''}>${y}</option>`).join('')
+             + '<option value="otro">➕ Otro año…</option>';
+  ['yearSelect','yearSelectM'].forEach(id => { const sel = document.getElementById(id); if (sel) sel.innerHTML = html; });
 }
 
 function onYearSelect(sel) {
