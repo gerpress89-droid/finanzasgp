@@ -31,7 +31,9 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .header-left h1{font-family:'Playfair Display',serif;font-size:clamp(30px,4vw,52px);font-weight:900;letter-spacing:-1px;line-height:1;}
 .header-left h1 span{color:var(--accent);}
 .header-left p{color:var(--muted);font-size:var(--fs-md);margin-top:6px;}
-.year-badge{background:var(--surface2);border:1px solid var(--border);border-radius:100px;padding:8px 22px;font-size:var(--fs-sm);font-weight:700;color:var(--accent);letter-spacing:2px;}
+.year-badge{background:var(--surface2);border:1px solid var(--border);border-radius:100px;padding:4px 10px;font-size:var(--fs-sm);font-weight:700;color:var(--accent);letter-spacing:2px;}
+.year-badge select{background:transparent;border:none;color:var(--accent);font:inherit;letter-spacing:2px;cursor:pointer;padding:4px 6px;outline:none;}
+.year-badge select option{background:var(--surface2);color:var(--text,#eee);letter-spacing:0;}
 .header-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
 .edit-btn{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:9px 16px;font-family:'DM Sans',sans-serif;font-size:var(--fs-sm);font-weight:600;color:var(--muted);cursor:pointer;transition:all 0.2s;}
 .edit-btn:hover{border-color:var(--accent);color:var(--accent);}
@@ -701,11 +703,11 @@ body{display:flex;}
       <h1>Finanzas <span>Personales</span></h1>
       <p>Control de ingresos, egresos y objetivos · <span id="headerYear">2026</span></p>
     </div>
-    <div class="year-badge" id="yearBadge">2026</div>
+    <div class="year-badge" id="yearBadge"><select id="yearSelect" onchange="onYearSelect(this)" title="Elegir año"></select></div>
   </div>
 
   <!-- New year banner (hidden by default) -->
-  <div id="newYearBanner" style="display:none;background:linear-gradient(135deg,rgba(240,208,128,0.12),rgba(110,217,158,0.08));border:1px solid var(--accent);border-radius:14px;padding:18px 24px;margin-bottom:20px;">
+  <div id="newYearBanner" style="display:none !important;background:linear-gradient(135deg,rgba(240,208,128,0.12),rgba(110,217,158,0.08));border:1px solid var(--accent);border-radius:14px;padding:18px 24px;margin-bottom:20px;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
       <div>
         <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--accent);margin-bottom:4px;">🎉 ¡Nuevo año detectado!</div>
@@ -1445,6 +1447,7 @@ async function loadFromDrive() {
       applyStoredLocal();
       dataLoaded = true;
       allData._year = allData._year || CURRENT_YEAR;
+      checkNewYear();
       renderAll();
       setStatus('🟡 Sin archivo en Drive — se subirán los datos de este dispositivo', true);
       await saveToSheet();
@@ -1462,6 +1465,7 @@ async function loadFromDrive() {
       applyStoredLocal();
       if (storedHasRealData()) dataLoaded = true;
       allData._year = allData._year || CURRENT_YEAR;
+      checkNewYear();
       renderAll();
     }
   }
@@ -1559,7 +1563,7 @@ function applyData(p) {
       allData[k === '_year' ? '_year' : parseInt(k)] = v;
     });
   }
-  if (p.objetivos) objetivos = p.objetivos;
+  if (p.objetivos) { objetivos = p.objetivos; migrateLegacyGoalKeys((p.allData && p.allData._year) || allData._year || CURRENT_YEAR); }
   if (p.gastosDiarios) gastosDiarios = p.gastosDiarios;
   if (p.historicalData) historicalData = p.historicalData;
   if (p.sectionTitles) sectionTitles = p.sectionTitles;
@@ -1758,7 +1762,7 @@ async function loadArchiveFilesFromDrive() {
     let added = false;
     for (const f of files) {
       const year = f.name.slice(DRIVE_ARCHIVE_PREFIX.length).replace('.json','');
-      if (archivedYears[year]) continue;
+      if (archivedYears[year] || String(allData._year) === year) continue;
       const res = await authFetch('https://www.googleapis.com/drive/v3/files/' + f.id + '?alt=media');
       if (!res.ok) continue;
       const snap = await res.json();
@@ -3321,24 +3325,102 @@ let dashboardYear = CURRENT_YEAR;
 
 function updateYearLabels(yr) {
   dashboardYear = yr;
-  document.getElementById('yearBadge').textContent = yr;
+  renderYearSelect();
   document.getElementById('headerYear').textContent = yr;
-  document.getElementById('objYear').textContent = yr;
+  document.getElementById('objYear').textContent = '· todos los años';
   document.title = 'Dashboard Finanzas ' + yr;
 }
 
 function checkNewYear() {
-  // Detect if allData has entries from a previous year
-  // We store the dashboard year in allData metadata
+  // Siempre se abre en el año calendario actual. Los otros años quedan guardados y se eligen en el selector.
   const storedYear = allData._year || CURRENT_YEAR;
   updateYearLabels(storedYear);
+  if (storedYear !== CURRENT_YEAR) switchYear(CURRENT_YEAR, true);
+}
 
-  if (storedYear < CURRENT_YEAR) {
-    const prevYear = storedYear;
-    document.getElementById('newYearMsg').textContent =
-      `Tus datos son de ${prevYear}. Podés cerrarlo (queda guardado completo en "Años anteriores") y empezar ${CURRENT_YEAR} desde cero.`;
-    document.getElementById('newYearBanner').style.display = 'block';
+// ── Selector de año ───────────────────────────────────────────────────────────
+function availableYears() {
+  const set = new Set([CURRENT_YEAR, CURRENT_YEAR + 1, dashboardYear]);
+  Object.keys(archivedYears).forEach(y => set.add(parseInt(y)));
+  Object.keys(historicalData).forEach(y => set.add(parseInt(y)));
+  return Array.from(set).filter(y => y > 1999 && y < 2100).sort((a,b) => a - b);
+}
+
+function renderYearSelect() {
+  const sel = document.getElementById('yearSelect');
+  if (!sel) return;
+  sel.innerHTML = availableYears().map(y => `<option value="${y}" ${y===dashboardYear?'selected':''}>${y}</option>`).join('')
+                + '<option value="otro">➕ Otro año…</option>';
+}
+
+function onYearSelect(sel) {
+  let v = sel.value;
+  if (v === 'otro') {
+    const r = prompt('¿Qué año querés agregar? (por ejemplo 2028)');
+    const y = parseInt(r);
+    if (!y || y < 2000 || y > 2099) { renderYearSelect(); return; }
+    v = String(y);
   }
+  switchYear(parseInt(v));
+}
+
+// Cambia el año que se está viendo/editando. El año que se deja queda guardado completo
+// (ingresos, gastos y registro diario). Las metas son globales y NO se tocan.
+function switchYear(y, silent) {
+  y = parseInt(y);
+  if (!y || y === dashboardYear) { renderYearSelect(); return; }
+  const prev = dashboardYear;
+  const prevHasData = monthsWithData(allData) > 0 || Object.keys(gastosDiarios).length > 0;
+  if (prevHasData) {
+    archivedYears[String(prev)] = buildYearSnapshot(false);
+    if (monthsWithData(allData) > 0) historicalData[String(prev)] = totalsByMonth();
+  }
+  // Cargar el año elegido (o uno vacío si todavía no tiene nada)
+  const snap = archivedYears[String(y)];
+  const next = { _year: y };
+  let nextDiario = {};
+  if (snap) {
+    Object.entries(snap.allData || {}).forEach(([k, v]) => { if (k !== '_year') next[parseInt(k)] = v; });
+    nextDiario = JSON.parse(JSON.stringify(snap.gastosDiarios || {}));
+    delete archivedYears[String(y)]; // ahora es el año activo; sale en el archivo principal
+  }
+  allData = next;
+  gastosDiarios = nextDiario;
+  const prevCopy = archivedYears[String(prev)] ? String(prev) : null;
+  updateYearLabels(y);
+  // Los períodos de metas tildados como pagados se reflejan como gasto en el año que se abre
+  resyncAllObjToGastos();
+  if (!selectedYears.includes(String(y))) selectedYears.push(String(y));
+  if (!selectedYears.includes(String(prev))) selectedYears.push(String(prev));
+  renderAll();
+  renderArchivo();
+  if (dataLoaded) {
+    saveLocal();
+    saveToSheet();
+    if (prevCopy) saveArchiveToDrive(prevCopy);
+    if (!silent) setStatus('📅 Ahora estás en ' + y + ' — ' + prev + ' quedó guardado', false);
+  }
+}
+
+// Metas viejas con períodos sin año ("5b", "12b", 0-11) se pasan a la forma "AAAA-MM" con el año
+// en que estaban cargadas, para que nunca se confundan al cambiar de año. No cambia montos, tildes ni nombres.
+function migrateLegacyGoalKeys(year) {
+  (objetivos || []).forEach(obj => {
+    if (!obj || !obj.meses) return;
+    Object.keys(obj.meses).slice().forEach(k => {
+      if (String(k).includes('-')) return;
+      let mi = null;
+      if (k === '5b') mi = 5; else if (k === '12b') mi = 11;
+      else { const n = parseInt(k); if (!isNaN(n) && n >= 0 && n <= 11) mi = n; }
+      if (mi === null) return;
+      const base = year + '-' + String(mi + 1).padStart(2, '0');
+      let nk = base, c = 2;
+      while (obj.meses[nk] !== undefined && nk !== k) { nk = base + '-' + c; c++; }
+      obj.meses[nk] = obj.meses[k]; delete obj.meses[k];
+      if (obj.mesesLabels && obj.mesesLabels[k] !== undefined) { obj.mesesLabels[nk] = obj.mesesLabels[k]; delete obj.mesesLabels[k]; }
+      if (obj.checks && obj.checks[k] !== undefined) { obj.checks[nk] = obj.checks[k]; delete obj.checks[k]; }
+    });
+  });
 }
 
 function dismissNewYear() {
